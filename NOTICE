@@ -1,0 +1,76 @@
+arlecchino-midp-rt — LGPL-форк MicroEmulator (рантайм J2ME для проекта Arlecchino)
+====================================================================================
+
+Этот продукт содержит код MicroEmulator:
+
+  MicroEmulator
+  Copyright (C) 2001-2010 Bartek Teodorczyk <barteo@barteo.net> и соавторы (см. CREDITS)
+  Источник: https://github.com/barteo/microemu
+  Коммит-база: e47b656d983deaa67810c776662444483bdbf134
+
+  Дополнительные исправления перенесены вручную из форка:
+  https://github.com/nikita36078/microemu (автор Nikita Shakarun, проект J2ME-Loader)
+  Коммит: eb7e7d38bf842fc51777a671d425b03eb7e7535e
+    - 6575842 Remove ClosedConnection
+    - 70c8503 Fix GameCanvas drawing
+    - e7c9da6 Improve exceptions handling
+    - 5b36135 Delete unused classloaders
+    - eb7e7d3 Fix Nokia games loading issue
+
+Лицензирование upstream: большинство файлов — дуально LGPL 2.1 / Apache License 2.0
+(COPYING, COPYING-LGPL-2.1, COPYING-AL-2.0); ряд файлов (© 2005 Andres Navarro:
+javax.microedition.lcdui.game.*, часть lcdui) — только LGPL 2.1. Совокупный
+артефакт midp-rt.jar распространяется на условиях GNU LGPL 2.1 (файл LICENSE).
+
+Атрибуция стороннего происхождения внутри MicroEmulator:
+  - org/microemu/device/impl/Polygon.java — НЕ оригинальный код MicroEmulator:
+    извлечён из класса uk.ac.leeds.ccg.geotools.GeoPolygon проекта
+    GeoTools (GeoTools java GIS toolkit, © The Centre for Computational
+    Geography, University of Leeds, 2002), распространяемого под GNU LGPL 2.1.
+    В midp-rt используется на тех же условиях LGPL 2.1.
+
+Изменения относительно upstream (требование LGPL 2.1 §2a — полный список в git-истории):
+  - 2026-06-10: выборочный импорт модулей (cldc, midp, javase, javase-swing,
+    nokiaui, siemensapi); НЕ перенесены: applet, SWT, webstart, android, iphone,
+    скины устройств, JSR-75/120/82, JSR-135 (MMAPI), examples, tests,
+    Maven-сборка, microemu-injected (дубль org.microemu.Injected).
+  - 2026-06-10: применены 5 исправлений из nikita36078/microemu (список выше).
+  - 2026-06-10: сборка заменена на javac-скрипт build.sh (JDK 17, --release 8).
+  - 2026-06-10: добавлен smoke-тест headless-рендера (smoke/).
+  - 2026-06-10: ASM обновлён 3.1 -> 9.8; org.microemu.app.classloader
+    (ChangeCallsClassVisitor, ChangeCallsMethodVisitor) портирован на API ASM 9
+    (ClassAdapter/MethodAdapter -> ClassVisitor/MethodVisitor(ASM9),
+    visitMethodInsn с флагом isInterface) — инструментация работает и на
+    современном байткоде (class file major 52+).
+  - 2026-06-10: добавлен CLI-флаг --no-instrument (org.microemu.app.Common) —
+    явное отключение ASM-инструментации классов MIDlet.
+  - 2026-06-10: добавлен минимальный API-заглушечный слой JSR-135 (MMAPI):
+    javax.microedition.media[.control] (Manager, Player, Controllable, Control,
+    PlayerListener, TimeBase, MediaException, VolumeControl, ToneControl) и
+    org.microemu.media.NoopPlayer — написан по публичной спецификации JSR-135
+    для форка (звук не воспроизводится; игры с MMAPI загружаются вместо
+    NoClassDefFoundError при резолве классов).
+  - 2026-06-12: слой JSR-135 доведён до реального звука: org.microemu.media.
+    AbstractPlayer (state-machine + слушатели событий + VolumeControl),
+    MidiPlayer (javax.sound.midi, громкость перехватом CC7), SampledPlayer
+    (javax.sound.sampled, WAV/AU/AIFF, громкость MASTER_GAIN), ToneGenerator
+    (Manager.playTone поверх javax.sound.midi); Manager диспатчит по
+    content-type/сигнатуре данных (MThd/RIFF/.snd/FORM), неподдержанные
+    форматы — по-прежнему NoopPlayer; системное свойство
+    org.microemu.media.noop=true отключает звук (headless — по умолчанию).
+  - 2026-06-10: org.microemu.app.Common — NPE-guard'ы при ошибке создания
+    MIDlet (loadMidlet == null больше не роняет initMIDlet/runAutoTests).
+  - 2026-06-10: headless-рендер GameCanvas-игр: введён интерфейс
+    org.microemu.device.j2se.J2SEGraphicsSurfaceDisplayComponent (реализуют
+    SwingDisplayComponent и NoUiDisplayComponent); J2SEDeviceDisplay.flushGraphics
+    больше не кастует жёстко к SwingDisplayComponent (в headless этот каст
+    молча ронял поток игры ClassCastException'ом — кадры GameCanvas-игр
+    не доходили до listener'а).
+  - 2026-06-10: файлам upstream, шедшим без лицензионных headers, проставлены
+    headers согласно лицензированию upstream (COPYING), с пометкой о форке.
+
+Сторонние компоненты:
+  - ASM 9.8 (lib/asm-9.8.jar) — BSD-3-Clause, © 2000-2011 INRIA, France Telecom;
+    далее © OW2 Consortium и контрибьюторы проекта ASM. https://asm.ow2.io/
+    Используется org.microemu.app.classloader для байткод-инструментации
+    классов MIDlet. Поставляется отдельным jar (не вкомпилирован в midp-rt.jar).
