@@ -84,6 +84,18 @@ public class InputScript {
 		}
 	}
 
+	/**
+	 * Канонический вход для живой инжекции одной клавиши (символическое имя из
+	 * KEYMAP, напр. "UP"/"SELECT"/"NUM5"). Переиспользуется обратным каналом
+	 * ввода ShellFrameBridge — чтобы маппинг клавиш жил в одном месте, а не
+	 * дублировался. Поток-безопасно: ниже всё уходит в DisplayAccess.keyPressed,
+	 * который кладёт событие в очередь EventDispatcher (или атомарно обновляет
+	 * GameCanvas), так что вызывать можно из любого потока.
+	 */
+	public static void injectKey(String name, boolean press) {
+		fire(name, press);
+	}
+
 	private static void fire(Object key, boolean press) {
 		if (key instanceof Number) {
 			rawKey(((Number) key).intValue(), press);

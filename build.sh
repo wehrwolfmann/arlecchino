@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Сборка midp-rt.jar (рантайм J2ME для Arlecchino).
-# Требуется JDK 17+ (компиляция с --release 8). Maven upstream мёртв и не используется.
+# Требуется JDK 17+. Компиляция с --release 17: мост кадров ShellFrameBridge
+# (org.microemu.app.shell) использует Unix-domain SocketChannel / UnixDomainSocketAddress
+# (Java 16+). Остальной рантайм Java-8-совместим; целевой JDK на машине — 17.
+# Maven upstream мёртв и не используется.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -28,7 +31,7 @@ for m in "${MODULES[@]}"; do
 done
 echo "Исходников: $(wc -l < build/sources.txt)"
 
-"$JAVAC" --release 8 -encoding UTF-8 -nowarn \
+"$JAVAC" --release 17 -encoding UTF-8 -nowarn \
     -cp "$ASM" \
     -d "$OUT" \
     @build/sources.txt

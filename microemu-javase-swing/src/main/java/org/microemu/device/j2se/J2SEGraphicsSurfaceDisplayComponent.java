@@ -12,6 +12,7 @@
 package org.microemu.device.j2se;
 
 import org.microemu.DisplayComponent;
+import org.microemu.app.ui.DisplayRepaintListener;
 
 public interface J2SEGraphicsSurfaceDisplayComponent extends DisplayComponent {
 
@@ -24,4 +25,12 @@ public interface J2SEGraphicsSurfaceDisplayComponent extends DisplayComponent {
 	 * Уведомить слушателей перерисовки о новом содержимом поверхности.
 	 */
 	void fireDisplayRepaint(J2SEGraphicsSurface surface, int x, int y, int width, int height);
+
+	/**
+	 * Подписать слушателя на перерисовки поверхности. Оба компонента
+	 * (Swing-окно и headless NoUi) уже реализуют этот метод; вынесен в общий
+	 * интерфейс, чтобы внешние подписчики (напр. ShellFrameBridge) могли
+	 * вешаться единообразно, не кастуя к конкретному классу.
+	 */
+	void addDisplayRepaintListener(DisplayRepaintListener l);
 }

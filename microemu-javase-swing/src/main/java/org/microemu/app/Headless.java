@@ -157,6 +157,15 @@ public class Headless {
 			app.displayComponent.addDisplayRepaintListener(recorder);
 		}
 
+		// Форк arlecchino-midp-rt: мост кадров в Rust-рендер (allods-shell).
+		// Активен только при -Dallods.shell.socket=PATH / env ALLODS_SHELL_SOCKET;
+		// иначе no-op (обычный headless-режим не меняется). Может сосуществовать
+		// с --frames-dir: компоненты держат один listener, поэтому если включён
+		// захват, мост не подменяет рекордер (приоритет у явного --frames-dir).
+		if (recorder == null) {
+			org.microemu.app.shell.ShellFrameBridge.attachIfEnabled(app.displayComponent);
+		}
+
 		app.emulator.initMIDlet(true);
 
 		if (recorder != null) {
