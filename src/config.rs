@@ -14,11 +14,16 @@
 //!   name   = "vineflower"
 //!   type   = "names"          # "names" keeps original class names (mergeable)
 //!                             # "renamed" renames classes (compare-only)
-//!   kind   = "jar"            # "jar" -> `java -jar`, "tool" -> run argv[0]
+//!   kind   = "jar"            # "jar"   -> `java -jar PATH`
+//!                             # "class" -> `java -cp PATH` (args[0] is the main class)
+//!                             # "tool"  -> run argv[0] (a native binary / launcher)
 //!   path   = "vineflower.jar" # absolute, or relative to the engine root
 //!   args   = ["{jar}", "{out}"]
-//!   sources_subdir = ""       # where the .java land under {out} ("sources" for jadx)
-//!   normalize = "none"        # "none" | "jadx"
+//!   sources_subdir = ""       # where the .java land under {out} ("sources" for jadx,
+//!                             #   "dava/src" for the Soot/Dava back-end)
+//!   normalize = "none"        # "none" | "jadx" | "unjar"
+//!                             #   "unjar" extracts .java out of any .jar an engine
+//!                             #   emits under {out} (Fernflower packs jar->jar)
 //!
 //! Substitution tokens available in args: {jar} {out} {java} {path}.
 
@@ -64,6 +69,8 @@ impl Engine {
 
         let mut argv: Vec<String> = match self.kind.as_str() {
             "jar" => vec![java.clone(), "-jar".to_string(), path_s.clone()],
+            // classpath launch: args[0] is the fully-qualified main class.
+            "class" => vec![java.clone(), "-cp".to_string(), path_s.clone()],
             "tool" => vec![path_s.clone()],
             other => return Err(format!("unknown engine kind: {other}")),
         };

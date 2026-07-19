@@ -77,7 +77,7 @@ struct DecompileArgs {
 struct SetupArgs {
     #[arg(long = "engines-root")]
     engines_root: Option<String>,
-    /// comma list: vineflower,cfr,procyon,jadx
+    /// comma list: vineflower,cfr,procyon,jadx,jd-core,jode,fernflower,dava,asm
     #[arg(long = "only")]
     only: Option<String>,
     #[arg(long = "no-freej2me")]
@@ -288,6 +288,25 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         }
     }
 
+    // quality metrics (syntactic correctness / cross-decompiler agreement / behavioral)
+    let mut metrics: Option<crate::metrics::Metrics> = None;
+    if let Some(md) = &merged_dir {
+        println!("\n== QUALITY METRICS ==");
+        let m = crate::metrics::compute(
+            &data,
+            md,
+            &per_iso,
+            rt.as_ref(),
+            &jar,
+            classpath.as_deref(),
+            &root,
+        );
+        for line in m.summary_lines() {
+            println!("  {line}");
+        }
+        metrics = Some(m);
+    }
+
     // deobf
     let mut deobf_info: Option<serde_json::Value> = None;
     if a.deobf {
@@ -329,6 +348,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         &data,
         rt.as_ref(),
         deobf_info.as_ref(),
+        metrics.as_ref(),
     );
     let _ = std::fs::write(
         out.join("report.json"),
@@ -336,7 +356,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
     );
     write_md(
         &out, &jar, &ranking, &best_base, merged_total, &merge_log, &per_class, &all_classes,
-        rt.as_ref(),
+        rt.as_ref(), metrics.as_ref(),
     );
     println!(
         "\n{}",
@@ -375,6 +395,7 @@ fn build_report_json(
     data: &BTreeMap<String, core::EngineData>,
     rt: Option<&RoundTrip>,
     deobf_info: Option<&serde_json::Value>,
+    metrics: Option<&crate::metrics::Metrics>,
 ) -> serde_json::Value {
     let ranking_json: Vec<serde_json::Value> = ranking
         .iter()
@@ -424,6 +445,7 @@ fn build_report_json(
         "per_class": serde_json::Value::Object(pc),
         "roundtrip": match rt { Some(r) => serde_json::to_value(r).unwrap_or(serde_json::Value::Null), None => serde_json::Value::Null },
         "deobf": match deobf_info { Some(d) => d.clone(), None => serde_json::Value::Null },
+        "metrics": match metrics { Some(m) => serde_json::to_value(m).unwrap_or(serde_json::Value::Null), None => serde_json::Value::Null },
     })
 }
 
@@ -438,6 +460,7 @@ fn write_md(
     per_class: &BTreeMap<String, PerClass>,
     all_classes: &BTreeSet<String>,
     rt: Option<&RoundTrip>,
+    metrics: Option<&crate::metrics::Metrics>,
 ) {
     let mut md: Vec<String> = vec![
         format!("# Arlecchino — report (v{VERSION})"),
@@ -481,6 +504,52 @@ fn write_md(
         md.push(format!(
             "- structural mismatches: {}",
             r.structural_mismatch.len()
+        ));
+        md.push(String::new());
+    }
+    if let Some(m) = metrics {
+        md.push("## Quality metrics".into());
+        md.push(String::new());
+        let s = &m.syntactic_correctness;
+        let a = &m.cross_decompiler_agreement;
+        let b = &m.behavioral_equivalence;
+        md.push("### 1. Syntactic correctness".into());
+        md.push(format!(
+            "- recompilable: {}/{} classes ({}%)",
+            s.recompilable_classes,
+            s.total_classes,
+            fmt_pct(s.recompilable_ratio * 100.0)
+        ));
+        md.push(format!(
+            "- isolated errors: {} — whole-tree errors: {}",
+            s.total_isolated_errors, s.whole_tree_errors
+        ));
+        md.push(String::new());
+        md.push("### 2. Cross-decompiler agreement (distortion proxy)".into());
+        md.push(format!(
+            "- mean agreement: {:.3} over {} class(es)",
+            a.mean_agreement, a.classes_scored
+        ));
+        md.push(format!(
+            "- chosen-fragment distortion (distance from consensus): {:.3}",
+            a.chosen_mean_distortion
+        ));
+        md.push(String::new());
+        md.push("### 3. Behavioral / semantic equivalence".into());
+        md.push(format!(
+            "- structural round-trip: {}/{} classes match original bytecode ({}%)",
+            b.structural_roundtrip.structurally_matching,
+            b.structural_roundtrip.total_original,
+            fmt_pct(b.structural_roundtrip.match_ratio * 100.0)
+        ));
+        md.push(format!(
+            "- cross-engine bytecode consensus: {:.3} over {} class(es)",
+            b.cross_engine_bytecode_consensus.mean_agreement,
+            b.cross_engine_bytecode_consensus.classes_scored
+        ));
+        md.push(format!(
+            "- runtime executed: {} (emulator available: {}) — {}",
+            b.runtime.executed, b.runtime.emulator_available, b.runtime.note
         ));
         md.push(String::new());
     }

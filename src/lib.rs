@@ -23,6 +23,7 @@ pub mod core;
 pub mod deobf;
 pub mod emulate;
 pub mod i18n;
+pub mod metrics;
 pub mod normalize;
 pub mod permethod;
 pub mod rename;

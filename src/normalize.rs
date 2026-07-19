@@ -73,11 +73,49 @@ pub fn normalize_jadx(srcdir: &Path, strip_comments: bool) -> usize {
     moved
 }
 
+/// Extract `.java` members out of any `.jar` an engine emitted at the top level of
+/// `srcdir`, writing them as loose files (preserving internal paths), then delete the
+/// jar.  Fernflower packs its output into `<out>/<input>.jar` when the input is a jar;
+/// this brings its sources back onto the shared canonical tree so they merge.
+/// Returns the number of `.java` files extracted.
+pub fn normalize_unjar(srcdir: &Path) -> usize {
+    let jars: Vec<std::path::PathBuf> = match std::fs::read_dir(srcdir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.is_file() && p.extension().map(|x| x == "jar").unwrap_or(false))
+            .collect(),
+        Err(_) => return 0,
+    };
+    let mut extracted = 0usize;
+    for jar in jars {
+        let names = match util::zip_namelist(&jar) {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        for name in names {
+            if !name.ends_with(".java") {
+                continue;
+            }
+            if let Ok(bytes) = util::zip_read_entry(&jar, &name) {
+                let dst = srcdir.join(&name);
+                if let Some(p) = dst.parent() {
+                    let _ = std::fs::create_dir_all(p);
+                }
+                if std::fs::write(&dst, bytes).is_ok() {
+                    extracted += 1;
+                }
+            }
+        }
+        let _ = std::fs::remove_file(&jar);
+    }
+    extracted
+}
+
 /// Dispatch by the engine's `normalize` setting.  Returns files touched.
 pub fn apply(engine_normalize: &str, srcdir: &Path, strip_comments: bool) -> usize {
-    if engine_normalize == "jadx" {
-        normalize_jadx(srcdir, strip_comments)
-    } else {
-        0
+    match engine_normalize {
+        "jadx" => normalize_jadx(srcdir, strip_comments),
+        "unjar" => normalize_unjar(srcdir),
+        _ => 0,
     }
 }

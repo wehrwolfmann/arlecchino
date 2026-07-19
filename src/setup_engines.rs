@@ -2,9 +2,17 @@
 //! ~/.arlecchino/engines/.
 //!
 //! Engines are fetched from their official GitHub releases (Vineflower, CFR, Procyon,
-//! jadx).  ASM (org.ow2.asm, BSD-3-Clause) is fetched from Maven Central for the
-//! bytecode member-renamer helper.  FreeJ2ME is fetched as a prebuilt release jar or
-//! built from source with `javac` (no Ant).  Every step degrades gracefully offline.
+//! jadx, JD-Core via jd-cli) plus a few pinned direct downloads (Jode from SourceForge,
+//! the standalone Fernflower and Soot/Dava jars from Maven Central).  ASM (org.ow2.asm,
+//! BSD-3-Clause) is fetched from Maven Central for the bytecode member-renamer helper.
+//! FreeJ2ME is fetched as a prebuilt release jar or built from source with `javac`
+//! (no Ant).  Every step degrades gracefully offline.
+//!
+//! Together these give the eight decompilers of Harrand et al.'s decompiler-diversity
+//! study: CFR, Procyon, Fernflower (both the maintained Vineflower fork and the original
+//! standalone engine), JADX, JD-Core, Jode, and Dava.  Krakatau is not fetched: its v1
+//! decompiler is Python 2 only and the maintained v2 Rust rewrite has no decompiler yet,
+//! so the standalone Fernflower stands in for it.
 
 use crate::config::engines_root_default;
 use crate::rename;
@@ -73,8 +81,11 @@ fn engine_pred(name: &str) -> Box<dyn Fn(&str) -> bool> {
         "cfr" => Box::new(|a: &str| {
             a.starts_with("cfr-") && a.ends_with(".jar") && !a.contains("javadoc") && !a.contains("sources")
         }),
-        "procyon" => Box::new(|a: &str| a.contains("decompiler-shell") && a.ends_with(".jar")),
+        "procyon" => Box::new(|a: &str| {
+            a.starts_with("procyon-decompiler") && a.ends_with(".jar") && !a.contains("sources")
+        }),
         "jadx" => Box::new(|a: &str| a.starts_with("jadx-") && a.ends_with(".zip") && !a.contains("gui")),
+        "jd-core" => Box::new(|a: &str| a.starts_with("jd-cli") && a.ends_with("-dist.zip")),
         _ => Box::new(|_: &str| false),
     }
 }
@@ -85,11 +96,33 @@ fn engine_repo(name: &str) -> &'static str {
         "cfr" => "leibnitz27/cfr",
         "procyon" => "mstrobel/procyon",
         "jadx" => "skylot/jadx",
+        "jd-core" => "intoolswetrust/jd-cli",
         _ => "",
     }
 }
 
-const GH_ORDER: &[&str] = &["vineflower", "cfr", "procyon", "jadx"];
+const GH_ORDER: &[&str] = &["vineflower", "cfr", "procyon", "jadx", "jd-core"];
+
+/// Engines fetched as a single pinned jar (name, url, target filename).  Jode is the
+/// classic 2001 decompiler; Fernflower is the standalone JetBrains engine (repackaged
+/// by the JBoss Windup project); Soot carries the Dava decompiler back-end.
+const DIRECT_JARS: &[(&str, &str, &str)] = &[
+    (
+        "jode",
+        "https://master.dl.sourceforge.net/project/jode/jode/1.1.2-pre1/jode-1.1.2-pre1.jar?viasf=1",
+        "jode.jar",
+    ),
+    (
+        "fernflower",
+        "https://repo1.maven.org/maven2/org/jboss/windup/decompiler/fernflower/fernflower/2.5.0.Final/fernflower-2.5.0.Final.jar",
+        "fernflower.jar",
+    ),
+    (
+        "dava",
+        "https://repo1.maven.org/maven2/org/soot-oss/soot/4.3.0/soot-4.3.0-jar-with-dependencies.jar",
+        "soot.jar",
+    ),
+];
 
 /// Download engines. Returns ordered (name, status) pairs.
 pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, String)> {
@@ -130,6 +163,31 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
                 }
                 let _ = std::fs::remove_file(&zpath);
                 "ok (jadx/bin/jadx)".into()
+            } else if *name == "jd-core" {
+                // the jd-cli release is a zip; pull the single fat jar out of it.
+                let zpath = root.join(&fname);
+                println!("  [{name}] downloading {fname} ...");
+                if let Err(e) = download(&url, &zpath) {
+                    return format!("FAILED: {e}");
+                }
+                let member = match util::zip_namelist(&zpath) {
+                    Ok(names) => names.into_iter().find(|m| m.ends_with("jd-cli.jar")),
+                    Err(e) => return format!("FAILED: {e}"),
+                };
+                let member = match member {
+                    Some(m) => m,
+                    None => return "FAILED: jd-cli.jar not in release zip".into(),
+                };
+                let bytes = match util::zip_read_entry(&zpath, &member) {
+                    Ok(b) => b,
+                    Err(e) => return format!("FAILED: {e}"),
+                };
+                let target = root.join("jd-cli.jar");
+                if let Err(e) = std::fs::write(&target, bytes) {
+                    return format!("FAILED: {e}");
+                }
+                let _ = std::fs::remove_file(&zpath);
+                "ok (jd-cli.jar)".into()
             } else {
                 let target = root.join(match *name {
                     "vineflower" => "vineflower.jar",
@@ -144,6 +202,23 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
                 format!("ok ({})", target.file_name().unwrap().to_string_lossy())
             }
         })();
+        result.push((name.to_string(), status));
+    }
+
+    for (name, url, target) in DIRECT_JARS {
+        if only.is_some() && !in_only(name) {
+            continue;
+        }
+        let dst = root.join(target);
+        let status = if dst.exists() && dst.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+            format!("ok (cached {target})")
+        } else {
+            println!("  [{name}] downloading {target} ...");
+            match download(url, &dst) {
+                Ok(()) => format!("ok ({target})"),
+                Err(e) => format!("FAILED: {e}"),
+            }
+        };
         result.push((name.to_string(), status));
     }
 

@@ -43,3 +43,46 @@ path = "jadx/bin/jadx"
 args = ["--no-res", "-d", "{out}", "{jar}"]
 sources_subdir = "sources"
 normalize = "jadx"
+
+# ── engines added for decompiler diversity (the paper evaluated 8) ─────────────
+
+# JD-Core, via the jd-cli command-line front-end.  `-od` writes a flat directory of
+# .java (default-package classes land at the top level, matching the other engines).
+[[engine]]
+name = "jd-core"
+type = "names"
+kind = "jar"
+path = "jd-cli.jar"
+args = ["{jar}", "-od", "{out}"]
+
+# Jode (1.1.2-pre1, 2001).  Ancient, but its decompiler front-end still runs on a
+# modern JDK; it keeps the original class names and writes a flat tree with `-d`.
+[[engine]]
+name = "jode"
+type = "names"
+kind = "class"
+path = "jode.jar"
+args = ["jode.decompiler.Main", "-d", "{out}", "{jar}"]
+
+# Fernflower — the ORIGINAL JetBrains engine, standalone, as distinct from the
+# Vineflower fork above (it is the substitute for Krakatau; see setup notes).  It
+# packs a jar input into `<out>/<input>.jar`, so `normalize = "unjar"` unpacks the
+# .java back onto the shared tree.
+[[engine]]
+name = "fernflower"
+type = "names"
+kind = "class"
+path = "fernflower.jar"
+args = ["org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler", "{jar}", "{out}"]
+normalize = "unjar"
+
+# Dava — the Soot decompiler back-end.  `-f dava` emits .java under `<out>/dava/src`.
+# Kept faithful to the paper; note Dava aborts on some obfuscated bytecode (a known
+# Soot bug) — when it does it simply produces no fragments and the merge proceeds.
+[[engine]]
+name = "dava"
+type = "names"
+kind = "jar"
+path = "soot.jar"
+args = ["-f", "dava", "-allow-phantom-refs", "-pp", "-d", "{out}", "-process-dir", "{jar}"]
+sources_subdir = "dava/src"
