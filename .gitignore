@@ -1,0 +1,15 @@
+# Rust build output
+/target/
+
+# Toolkit run output (decompile writes here by default)
+arlecchino_out/
+arlecchino_out_*/
+*_out/
+
+# FreeJ2ME writes runtime state in the cwd when `emulate` runs
+config/
+freej2me_system/
+rms/
+
+# user-specific local config
+arlecchino.local.toml

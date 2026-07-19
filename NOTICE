@@ -1,0 +1,23 @@
+Arlecchino
+Copyright 2026 Wehrwolfmann
+
+This product is an independent, clean-room implementation of the
+meta-decompilation idea described in:
+  "Java Decompiler Diversity and its Application to Meta-decompilation"
+  Harrand, Soto-Valero, Monperrus, Baudry — arXiv:2005.11315
+No source code from the original "Arlecchino" prototype is used.
+
+It invokes (as separate processes, not linked) third-party tools, each under
+its own license and not bundled in this repository:
+  - Java decompilers: Vineflower, CFR, Procyon, jadx
+  - J2ME emulator:    FreeJ2ME (TASEmulators/freej2me-plus)
+  - Bytecode library: ASM (org.ow2.asm — asm, asm-tree, asm-commons, asm-analysis),
+                      © INRIA, France Telecom, BSD-3-Clause. Used by the bytecode
+                      member-renamer (assets/MemberRenamer.java, which is original
+                      work). `arlecchino setup` downloads the ASM jars from
+                      Maven Central into ~/.arlecchino/engines/asm and compiles the
+                      helper against them; ASM is not vendored in this repository.
+`arlecchino setup` downloads/builds these into ~/.arlecchino/engines on request.
+
+The experimental --per-method merge uses a small built-in Java signature scanner;
+no third-party parser is required.

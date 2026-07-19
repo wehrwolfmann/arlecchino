@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PLACEHOLDER app icon for Arlecchino. Swap this file with the real artwork and
+     rebuild (or replace the installed copy at
+     ~/.local/share/icons/hicolor/scalable/apps/arlecchino.svg). Keep it a
+     self-contained SVG with no external references. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="60" fill="#1b2838"/>
+  <!-- harlequin diamonds, Steam-blue accent -->
+  <path d="M64 20 L84 64 L64 108 L44 64 Z" fill="#66c0f4"/>
+  <path d="M28 64 L48 40 L48 88 Z" fill="#2a4055"/>
+  <path d="M100 64 L80 40 L80 88 Z" fill="#2a4055"/>
+  <circle cx="64" cy="64" r="9" fill="#0b1722"/>
+</svg>
