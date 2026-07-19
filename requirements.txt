@@ -1,0 +1,5 @@
+# Core toolkit has NO required Python dependencies (stdlib only; needs a JDK 11+
+# on PATH for java/javac/javap/jar).
+#
+# Optional — only for the experimental `decompile --per-method` merge:
+javalang>=0.13

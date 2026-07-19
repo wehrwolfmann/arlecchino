@@ -1,0 +1,45 @@
+# Default engine configuration for Arlecchino.
+#
+# `engines_root` is where `arlecchino setup` downloads engines.  Relative `path`
+# values below are resolved against it.  You can also point `path` at an absolute
+# location (e.g. an existing local copy) — see ~/.arlecchino/engines.toml.
+#
+# Override by copying this file to ~/.arlecchino/engines.toml or ./arlecchino.toml
+# and editing it, or pass --config PATH.
+
+engines_root = "~/.arlecchino/engines"
+
+[[engine]]
+name = "vineflower"
+type = "names"
+kind = "jar"
+path = "vineflower.jar"
+args = ["{jar}", "{out}"]
+
+[[engine]]
+name = "cfr"
+type = "names"
+kind = "jar"
+path = "cfr.jar"
+args = ["{jar}", "--outputdir", "{out}",
+        "--renamedupmembers", "true", "--renameillegalidents", "true",
+        "--silent", "true"]
+
+[[engine]]
+name = "procyon"
+type = "names"
+kind = "jar"
+path = "procyon.jar"
+args = ["-jar", "{jar}", "-o", "{out}"]
+
+# jadx keeps the original short class names (a, b, ... o) but wraps default-package
+# classes in a `defpackage` package and renames *colliding* fields.  The "jadx"
+# normalizer un-wraps `defpackage` so its output merges with the canonical tree.
+[[engine]]
+name = "jadx"
+type = "names"
+kind = "tool"
+path = "jadx/bin/jadx"
+args = ["--no-res", "-d", "{out}", "{jar}"]
+sources_subdir = "sources"
+normalize = "jadx"

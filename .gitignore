@@ -1,0 +1,22 @@
+arlecchino_out/
+arlecchino_out_*/
+*_out/
+__pycache__/
+*.pyc
+_classes/
+_sources.txt
+_sources_clean.txt
+_iso/
+_pm/
+javac.*.args
+*.egg-info/
+build/
+dist/
+# FreeJ2ME writes runtime state in the cwd when `emulate` runs:
+config/
+freej2me_system/
+rms/
+
+# user-specific local config + caches — NOT for publication
+arlecchino.local.toml
+.pytest_cache/

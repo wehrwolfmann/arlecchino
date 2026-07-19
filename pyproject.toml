@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arlecchino"
+version = "1.0.0"
+description = "Meta-decompiler and J2ME port toolkit: multi-decompiler best-of merge, auto-fix, round-trip, FreeJ2ME emulation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Wehrwolfmann" }]
+keywords = ["decompiler", "java", "j2me", "midp", "meta-decompilation"]
+
+# javalang is OPTIONAL — only needed for the experimental --per-method merge.
+dependencies = []
+
+[project.optional-dependencies]
+permethod = ["javalang>=0.13"]
+
+[project.scripts]
+arlecchino = "arlecchino.cli:main"
+
+[tool.setuptools]
+packages = ["arlecchino"]
+
+[tool.setuptools.package-data]
+arlecchino = ["engines.default.toml"]
