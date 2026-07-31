@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import org.microemu.log.Logger;
+import org.microemu.log.MidpTrace;
 import org.microemu.media.MidiPlayer;
 import org.microemu.media.NoopPlayer;
 import org.microemu.media.SampledPlayer;
@@ -83,6 +84,10 @@ public final class Manager {
 			throw new IllegalArgumentException("stream is null");
 		}
 		byte[] data = readFully(stream);
+		if (MidpTrace.ON) {
+			MidpTrace.call("Manager.createPlayer", (type == null ? "?" : type)
+					+ "/" + data.length + "b");
+		}
 		if (noop()) {
 			return new NoopPlayer(type);
 		}

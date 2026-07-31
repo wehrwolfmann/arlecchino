@@ -23,6 +23,7 @@ package javax.microedition.lcdui;
 import java.util.Hashtable;
 
 import org.microemu.device.DeviceFactory;
+import org.microemu.log.MidpTrace;
 
 
 public final class Font 
@@ -94,6 +95,7 @@ public final class Font
 	
 	public static Font getFont(int face, int style, int size)
 	{
+		if (MidpTrace.ON) { MidpTrace.call("Font.getFont", face, style, size); }
 		Integer key = new Integer(style + size + face);
 		Font result = (Font) fonts.get(key);
 		if (result == null) {
@@ -164,6 +166,7 @@ public final class Font
 	
 	public int getHeight()
 	{
+		if (MidpTrace.ON) { MidpTrace.call("Font.getHeight"); }
 		if (height == -1) {
 			height = DeviceFactory.getDevice().getFontManager().getHeight(this);
 		}
@@ -196,6 +199,7 @@ public final class Font
 
 	public int stringWidth(String str)
 	{
+		if (MidpTrace.ON) { MidpTrace.call("Font.stringWidth", str); }
 		return DeviceFactory.getDevice().getFontManager().stringWidth(this, str);
 	}
 

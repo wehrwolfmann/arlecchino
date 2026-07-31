@@ -20,6 +20,7 @@ import javax.microedition.media.TimeBase;
 import javax.microedition.media.control.VolumeControl;
 
 import org.microemu.log.Logger;
+import org.microemu.log.MidpTrace;
 
 public abstract class AbstractPlayer implements Player {
 
@@ -101,6 +102,7 @@ public abstract class AbstractPlayer implements Player {
 	}
 
 	public synchronized void start() throws MediaException {
+		if (MidpTrace.ON) { MidpTrace.call("Player.start", getClass().getName()); }
 		checkNotClosed();
 		prefetch();
 		if (state == PREFETCHED) {
@@ -111,6 +113,7 @@ public abstract class AbstractPlayer implements Player {
 	}
 
 	public synchronized void stop() throws MediaException {
+		if (MidpTrace.ON) { MidpTrace.call("Player.stop", getClass().getName()); }
 		checkNotClosed();
 		if (state == STARTED) {
 			doStop();
@@ -228,6 +231,7 @@ public abstract class AbstractPlayer implements Player {
 	}
 
 	public synchronized void setLoopCount(int count) {
+		if (MidpTrace.ON) { MidpTrace.call("Player.setLoopCount", count); }
 		if (count == 0) {
 			throw new IllegalArgumentException("loop count is 0");
 		}

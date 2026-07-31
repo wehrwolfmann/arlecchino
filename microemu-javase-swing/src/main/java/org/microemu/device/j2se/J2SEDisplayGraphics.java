@@ -39,6 +39,7 @@ import javax.microedition.lcdui.game.Sprite;
 import org.microemu.device.Device;
 import org.microemu.device.DeviceFactory;
 import org.microemu.device.j2se.J2SEGraphicsSurface;
+import org.microemu.log.MidpTrace;
 
 public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
 
@@ -97,6 +98,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     }
 
     public void setColor(int RGB) {
+        if (MidpTrace.ON) { MidpTrace.call("setColor", RGB); }
         color = RGB;
         
         Color awtColor = (Color) colorCache.get(new Integer(RGB));
@@ -116,6 +118,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     }
 
     public void setFont(javax.microedition.lcdui.Font font) {
+        if (MidpTrace.ON) { MidpTrace.call("setFont", font.getFace(), font.getStyle(), font.getSize()); }
         currentFont = font;
         J2SEFont tmpFont = (J2SEFont) ((J2SEFontManager) DeviceFactory.getDevice().getFontManager())
                 .getFont(currentFont);
@@ -136,11 +139,13 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
 	}
 
     public void clipRect(int x, int y, int width, int height) {
+        if (MidpTrace.ON) { MidpTrace.call("clipRect", x, y, width, height); }
         g.clipRect(x, y, width, height);
         clip = g.getClipBounds();
     }
 
     public void setClip(int x, int y, int width, int height) {
+        if (MidpTrace.ON) { MidpTrace.call("setClip", x, y, width, height); }
         g.setClip(x, y, width, height);
         clip.x = x;
         clip.y = y;
@@ -169,6 +174,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     }
 
     public void drawImage(Image img, int x, int y, int anchor) {
+        if (MidpTrace.ON) { MidpTrace.callImage("drawImage", img, new int[] { x, y, anchor }); }
         int newx = x;
         int newy = y;
 
@@ -195,6 +201,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     }
 
     public void drawLine(int x1, int y1, int x2, int y2) {
+        if (MidpTrace.ON) { MidpTrace.call("drawLine", x1, y1, x2, y2); }
         g.drawLine(x1, y1, x2, y2);
     }
 
@@ -210,6 +217,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     }
 
     public void drawString(String str, int x, int y, int anchor) {
+        if (MidpTrace.ON) { MidpTrace.call("drawString", str, x, y, anchor); }
         int newx = x;
         int newy = y;
 
@@ -244,6 +252,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     }
 
     public void fillRect(int x, int y, int width, int height) {
+        if (MidpTrace.ON) { MidpTrace.call("fillRect", x, y, width, height); }
         g.fillRect(x, y, width, height);
     }
 
@@ -252,6 +261,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     }
 
     public void translate(int x, int y) {
+        if (MidpTrace.ON) { MidpTrace.call("translate", x, y); }
         super.translate(x, y);
         g.translate(x, y);
         clip.x -= x;
@@ -261,6 +271,7 @@ public class J2SEDisplayGraphics extends javax.microedition.lcdui.Graphics {
     // Andres Navarro
     public void drawRegion(Image src, int x_src, int y_src, int width, int height, int transform, int x_dst, int y_dst,
             int anchor) {
+        if (MidpTrace.ON) { MidpTrace.callImage("drawRegion", src, new int[] { x_src, y_src, width, height, transform, x_dst, y_dst, anchor }); }
 
         // may throw NullPointerException, this is ok
         if (x_src + width > src.getWidth() || y_src + height > src.getHeight() || width < 0 || height < 0 || x_src < 0

@@ -29,6 +29,7 @@
 package javax.microedition.lcdui;
 import java.io.IOException;
 import org.microemu.device.DeviceFactory;
+import org.microemu.log.MidpTrace;
 
 
 public class Image
@@ -44,12 +45,20 @@ public class Image
 		if (width <= 0 || height <= 0) {
 			throw new IllegalArgumentException();
 		}
-		return DeviceFactory.getDevice().getDeviceDisplay().createImage(width, height, true, 0x00000000);
+		Image img = DeviceFactory.getDevice().getDeviceDisplay().createImage(width, height, true, 0x00000000);
+		if (MidpTrace.ON) {
+			MidpTrace.image(img, "mutable", width, height);
+		}
+		return img;
 	}
 
 	public static Image createImage(String name) throws IOException
 	{
-		return DeviceFactory.getDevice().getDeviceDisplay().createImage(name);
+		Image img = DeviceFactory.getDevice().getDeviceDisplay().createImage(name);
+		if (MidpTrace.ON) {
+			MidpTrace.image(img, name, img.getWidth(), img.getHeight());
+		}
+		return img;
 	}
 
 	public static Image createImage(Image source)
@@ -59,7 +68,11 @@ public class Image
 
 	public static Image createImage(byte[] imageData, int imageOffset, int imageLength)
 	{
-		return DeviceFactory.getDevice().getDeviceDisplay().createImage(imageData, imageOffset, imageLength);
+		Image img = DeviceFactory.getDevice().getDeviceDisplay().createImage(imageData, imageOffset, imageLength);
+		if (MidpTrace.ON) {
+			MidpTrace.image(img, "byte[" + imageLength + "]", img.getWidth(), img.getHeight());
+		}
+		return img;
 	}
 
 	public Graphics getGraphics()

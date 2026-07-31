@@ -43,6 +43,7 @@ import org.microemu.device.DeviceFactory;
 import org.microemu.device.ui.DisplayableUI;
 import org.microemu.device.ui.EventDispatcher;
 import org.microemu.device.ui.ItemUI;
+import org.microemu.log.MidpTrace;
 
 public class Display {
 
@@ -266,6 +267,7 @@ public class Display {
 		// check later
 		// Andres Navarro
 		public void keyPressed(int keyCode) {
+			if (MidpTrace.ON) { MidpTrace.call("keyPressed", keyCode); }
 			// Andres Navarro
 			if (current != null && current instanceof GameCanvas) {
 				processGameCanvasKeyEvent((GameCanvas) current, keyCode, true);
@@ -279,6 +281,7 @@ public class Display {
 		}
 
 		public void keyReleased(int keyCode) {
+			if (MidpTrace.ON) { MidpTrace.call("keyReleased", keyCode); }
 			// Andres Navarro
 			if (current != null && current instanceof GameCanvas) {
 				processGameCanvasKeyEvent((GameCanvas) current, keyCode, false);
@@ -329,6 +332,9 @@ public class Display {
 		public void paint(Graphics g) {
 			// TODO consider removal of DisplayAccess::paint(..)
 			if (current != null) {
+				if (MidpTrace.ON) {
+					MidpTrace.frame();
+				}
 				try {
 					current.paint(g);
 				} catch (Throwable th) {
@@ -519,6 +525,10 @@ public class Display {
 	}
 
 	public void setCurrent(final Displayable nextDisplayable) {
+		if (MidpTrace.ON) {
+			MidpTrace.call("Display.setCurrent", nextDisplayable == null ? "null"
+					: nextDisplayable.getClass().getName());
+		}
 		if (nextDisplayable == current) {
 			return;
 		}

@@ -30,6 +30,7 @@ package javax.microedition.lcdui;
 import javax.microedition.lcdui.game.GameCanvas;
 
 import org.microemu.device.DeviceFactory;
+import org.microemu.log.MidpTrace;
 
 public abstract class Canvas extends Displayable
 {
@@ -68,6 +69,7 @@ public abstract class Canvas extends Displayable
 
 	public int getGameAction(int keyCode)
 	{
+		if (MidpTrace.ON) { MidpTrace.call("getGameAction", keyCode, Display.getGameAction(keyCode)); }
 		return Display.getGameAction(keyCode);
 	}
 
@@ -148,6 +150,7 @@ public abstract class Canvas extends Displayable
 
 	public final void repaint()
 	{
+		if (MidpTrace.ON) { MidpTrace.call("repaint"); }
 		super.repaint();
 	}
 
@@ -160,6 +163,7 @@ public abstract class Canvas extends Displayable
     
     public final void serviceRepaints()
     {
+    	if (MidpTrace.ON) { MidpTrace.call("serviceRepaints"); }
     	if (currentDisplay != null) {
     		currentDisplay.serviceRepaints();
     	}
@@ -167,6 +171,7 @@ public abstract class Canvas extends Displayable
     
     
     public void setFullScreenMode(boolean mode) {
+    	if (MidpTrace.ON) { MidpTrace.call("setFullScreenMode", mode ? 1 : 0); }
     	if (this.fullScreenMode != mode) {
     		this.fullScreenMode = mode;
     		
