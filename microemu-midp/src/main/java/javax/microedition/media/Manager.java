@@ -84,19 +84,22 @@ public final class Manager {
 			throw new IllegalArgumentException("stream is null");
 		}
 		byte[] data = readFully(stream);
-		if (MidpTrace.ON) {
-			MidpTrace.call("Manager.createPlayer", (type == null ? "?" : type)
-					+ "/" + data.length + "b");
-		}
+		Player player;
+		String kind = noop() ? null : mediaKind(type, data);
 		if (noop()) {
-			return new NoopPlayer(type);
+			player = new NoopPlayer(type);
+		} else if ("midi".equals(kind)) {
+			player = new MidiPlayer(data, type != null ? type : "audio/midi");
+		} else if ("sampled".equals(kind)) {
+			player = new SampledPlayer(data, type != null ? type : "audio/x-wav");
+		} else {
+			player = null;
 		}
-		String kind = mediaKind(type, data);
-		if ("midi".equals(kind)) {
-			return new MidiPlayer(data, type != null ? type : "audio/midi");
-		}
-		if ("sampled".equals(kind)) {
-			return new SampledPlayer(data, type != null ? type : "audio/x-wav");
+		if (player != null) {
+			if (MidpTrace.ON) {
+				MidpTrace.player(player, type == null ? "?" : type, data.length);
+			}
+			return player;
 		}
 		Logger.warn("MMAPI: unsupported media type '" + type + "' ("
 				+ data.length + " bytes) - no-op player");

@@ -166,11 +166,11 @@ public final class Font
 	
 	public int getHeight()
 	{
-		if (MidpTrace.ON) { MidpTrace.call("Font.getHeight"); }
 		if (height == -1) {
 			height = DeviceFactory.getDevice().getFontManager().getHeight(this);
 		}
 		
+		if (MidpTrace.ON) { MidpTrace.call("Font.getHeight", height); }
 		return height;
 	}
 
@@ -199,8 +199,9 @@ public final class Font
 
 	public int stringWidth(String str)
 	{
-		if (MidpTrace.ON) { MidpTrace.call("Font.stringWidth", str); }
-		return DeviceFactory.getDevice().getFontManager().stringWidth(this, str);
+		int w = DeviceFactory.getDevice().getFontManager().stringWidth(this, str);
+		if (MidpTrace.ON) { MidpTrace.call("Font.stringWidth", str, w); }
+		return w;
 	}
 
 	

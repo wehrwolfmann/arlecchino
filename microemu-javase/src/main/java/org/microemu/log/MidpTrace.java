@@ -15,7 +15,14 @@
  *      F <номер кадра> t=<мс от старта трассы>   — граница кадра (paint)
  *      <метод> <арг> <арг> ...                   — вызов
  *      I <id> <w>x<h> <источник>                 — создание Image
+ *      P <id> <тип> <N>b                         — создание Player (JSR-135)
+ *      <метод> "<стор>" len=N hex=…              — запись RMS целиком
  *  В конце (shutdown hook) — блок "# histogram" с числом вызовов по методам.
+ *
+ *  Ограничение объёма: подробности рисования пишутся только для первых
+ *  -Dmidprt.trace.frames кадров (по умолчанию 200), дальше идёт один счётчик.
+ *  Редкие и важные вещи — ввод, RMS, звук, смена Displayable, создание
+ *  Image — пишутся ВСЕГДА (event/bytes), лимит на них не распространяется.
  */
 package org.microemu.log;
 
@@ -99,7 +106,47 @@ public final class MidpTrace {
 		}
 	}
 
-	// --------------------------------------------------------------- вызовы
+	// ------------------------------------------------------- события (всегда)
+	//
+	// Ввод, RMS, звук, смена Displayable — редкие и важные: пишутся вне
+	// зависимости от лимита подробных кадров.
+
+	public static synchronized void event(String m) {
+		hit(m);
+		if (out != null) {
+			out.println(m);
+		}
+	}
+
+	public static synchronized void event(String m, int a) {
+		hit(m);
+		if (out != null) {
+			out.println(m + " " + a);
+		}
+	}
+
+	public static synchronized void event(String m, int a, int b) {
+		hit(m);
+		if (out != null) {
+			out.println(m + " " + a + " " + b);
+		}
+	}
+
+	public static synchronized void event(String m, String s) {
+		hit(m);
+		if (out != null) {
+			out.println(m + " " + quote(s));
+		}
+	}
+
+	public static synchronized void event(String m, String s, int a) {
+		hit(m);
+		if (out != null) {
+			out.println(m + " " + quote(s) + " " + a);
+		}
+	}
+
+	// ------------------------------------------- вызовы рисования (по кадрам)
 
 	public static synchronized void call(String m) {
 		hit(m);
@@ -143,6 +190,13 @@ public final class MidpTrace {
 		}
 	}
 
+	public static synchronized void call(String m, String s, int a) {
+		hit(m);
+		if (detail && out != null) {
+			out.println(m + " " + quote(s) + " " + a);
+		}
+	}
+
 	public static synchronized void call(String m, String s, int a, int b, int c) {
 		hit(m);
 		if (detail && out != null) {
@@ -155,7 +209,7 @@ public final class MidpTrace {
 		hit(m);
 		if (detail && out != null) {
 			StringBuffer sb = new StringBuffer(m);
-			sb.append(" #").append(imageId(image));
+			sb.append(" #").append(objId(image));
 			for (int i = 0; i < args.length; i++) {
 				sb.append(' ').append(args[i]);
 			}
@@ -163,10 +217,54 @@ public final class MidpTrace {
 		}
 	}
 
+	/** Вызов с байтовой полезной нагрузкой (записи RMS): дамп в hex.
+	 *  Пишется ВСЕГДА, независимо от лимита подробных кадров — записей мало,
+	 *  а формат сейва нужен целиком. */
+	public static synchronized void bytes(String m, String name, byte[] data,
+			int off, int len) {
+		hit(m);
+		if (out == null) {
+			return;
+		}
+		StringBuffer sb = new StringBuffer(m);
+		sb.append(' ').append(quote(name));
+		if (data == null) {
+			sb.append(" null");
+		} else {
+			sb.append(" len=").append(len).append(" hex=");
+			for (int i = 0; i < len; i++) {
+				int v = data[off + i] & 0xff;
+				sb.append(HEX[v >> 4]).append(HEX[v & 0xf]);
+			}
+		}
+		out.println(sb.toString());
+		out.flush();
+	}
+
+	private static final char[] HEX = "0123456789abcdef".toCharArray();
+
+	/** Регистрация созданного Player: стабильный id + тип и размер носителя
+	 *  (по размеру опознаётся конкретный /mid/*.mid). */
+	public static synchronized void player(Object pl, String type, int nbytes) {
+		hit("Manager.createPlayer");
+		int id = objId(pl);
+		if (out != null) {
+			out.println("P " + id + " " + quote(type) + " " + nbytes + "b");
+		}
+	}
+
+	/** Событие плеера со ссылкой на его id: "Player.start #4". */
+	public static synchronized void playerEvent(String m, Object pl) {
+		hit(m);
+		if (out != null) {
+			out.println(m + " #" + objId(pl));
+		}
+	}
+
 	/** Регистрация созданного Image: стабильный id + источник. */
 	public static synchronized void image(Object image, String src, int w, int h) {
 		hit("Image.create");
-		int id = imageId(image);
+		int id = objId(image);
 		if (out != null) {
 			out.println("I " + id + " " + w + "x" + h + " " + quote(src));
 		}
@@ -174,14 +272,15 @@ public final class MidpTrace {
 
 	// ---------------------------------------------------------------- служебное
 
-	private static int imageId(Object image) {
-		if (image == null) {
+	/** Стабильный порядковый номер объекта (изображения, плеера). */
+	private static int objId(Object o) {
+		if (o == null) {
 			return 0;
 		}
-		Integer id = (Integer) imageIds.get(image);
+		Integer id = (Integer) imageIds.get(o);
 		if (id == null) {
 			id = new Integer(nextImageId++);
-			imageIds.put(image, id);
+			imageIds.put(o, id);
 		}
 		return id.intValue();
 	}

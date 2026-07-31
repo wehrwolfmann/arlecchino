@@ -69,7 +69,7 @@ public abstract class Canvas extends Displayable
 
 	public int getGameAction(int keyCode)
 	{
-		if (MidpTrace.ON) { MidpTrace.call("getGameAction", keyCode, Display.getGameAction(keyCode)); }
+		if (MidpTrace.ON) { MidpTrace.event("getGameAction", keyCode, Display.getGameAction(keyCode)); }
 		return Display.getGameAction(keyCode);
 	}
 
@@ -171,7 +171,7 @@ public abstract class Canvas extends Displayable
     
     
     public void setFullScreenMode(boolean mode) {
-    	if (MidpTrace.ON) { MidpTrace.call("setFullScreenMode", mode ? 1 : 0); }
+    	if (MidpTrace.ON) { MidpTrace.event("setFullScreenMode", mode ? 1 : 0); }
     	if (this.fullScreenMode != mode) {
     		this.fullScreenMode = mode;
     		

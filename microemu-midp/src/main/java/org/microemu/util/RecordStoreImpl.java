@@ -42,6 +42,7 @@ import javax.microedition.rms.RecordStoreFullException;
 import javax.microedition.rms.RecordStoreNotOpenException;
 
 import org.microemu.RecordStoreManager;
+import org.microemu.log.MidpTrace;
 
 
 public class RecordStoreImpl extends RecordStore
@@ -178,6 +179,7 @@ public class RecordStoreImpl extends RecordStore
     public void closeRecordStore() 
 			throws RecordStoreNotOpenException, RecordStoreException
 	{
+		if (MidpTrace.ON) { MidpTrace.event("RecordStore.close", recordStoreName); }
 		if (!open) {
 		    throw new RecordStoreNotOpenException();
 		}
@@ -224,6 +226,7 @@ public class RecordStoreImpl extends RecordStore
 		    throw new RecordStoreNotOpenException();
 		}
 		
+		if (MidpTrace.ON) { MidpTrace.event("RecordStore.getNumRecords", recordStoreName, size); }
 		return size;
 	}
 
@@ -314,6 +317,7 @@ public class RecordStoreImpl extends RecordStore
     public int addRecord(byte[] data, int offset, int numBytes)
     		throws RecordStoreNotOpenException, RecordStoreException, RecordStoreFullException
 	{
+		if (MidpTrace.ON) { MidpTrace.bytes("RecordStore.addRecord", recordStoreName, data, offset, numBytes); }
 		if (!open) {
 		    throw new RecordStoreNotOpenException();
 		}

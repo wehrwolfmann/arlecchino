@@ -267,7 +267,7 @@ public class Display {
 		// check later
 		// Andres Navarro
 		public void keyPressed(int keyCode) {
-			if (MidpTrace.ON) { MidpTrace.call("keyPressed", keyCode); }
+			if (MidpTrace.ON) { MidpTrace.event("keyPressed", keyCode); }
 			// Andres Navarro
 			if (current != null && current instanceof GameCanvas) {
 				processGameCanvasKeyEvent((GameCanvas) current, keyCode, true);
@@ -281,7 +281,7 @@ public class Display {
 		}
 
 		public void keyReleased(int keyCode) {
-			if (MidpTrace.ON) { MidpTrace.call("keyReleased", keyCode); }
+			if (MidpTrace.ON) { MidpTrace.event("keyReleased", keyCode); }
 			// Andres Navarro
 			if (current != null && current instanceof GameCanvas) {
 				processGameCanvasKeyEvent((GameCanvas) current, keyCode, false);
@@ -526,7 +526,7 @@ public class Display {
 
 	public void setCurrent(final Displayable nextDisplayable) {
 		if (MidpTrace.ON) {
-			MidpTrace.call("Display.setCurrent", nextDisplayable == null ? "null"
+			MidpTrace.event("Display.setCurrent", nextDisplayable == null ? "null"
 					: nextDisplayable.getClass().getName());
 		}
 		if (nextDisplayable == current) {

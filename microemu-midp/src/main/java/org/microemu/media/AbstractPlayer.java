@@ -102,7 +102,7 @@ public abstract class AbstractPlayer implements Player {
 	}
 
 	public synchronized void start() throws MediaException {
-		if (MidpTrace.ON) { MidpTrace.call("Player.start", getClass().getName()); }
+		if (MidpTrace.ON) { MidpTrace.playerEvent("Player.start", this); }
 		checkNotClosed();
 		prefetch();
 		if (state == PREFETCHED) {
@@ -113,7 +113,7 @@ public abstract class AbstractPlayer implements Player {
 	}
 
 	public synchronized void stop() throws MediaException {
-		if (MidpTrace.ON) { MidpTrace.call("Player.stop", getClass().getName()); }
+		if (MidpTrace.ON) { MidpTrace.playerEvent("Player.stop", this); }
 		checkNotClosed();
 		if (state == STARTED) {
 			doStop();
@@ -231,7 +231,7 @@ public abstract class AbstractPlayer implements Player {
 	}
 
 	public synchronized void setLoopCount(int count) {
-		if (MidpTrace.ON) { MidpTrace.call("Player.setLoopCount", count); }
+		if (MidpTrace.ON) { MidpTrace.event("Player.setLoopCount", count); }
 		if (count == 0) {
 			throw new IllegalArgumentException("loop count is 0");
 		}

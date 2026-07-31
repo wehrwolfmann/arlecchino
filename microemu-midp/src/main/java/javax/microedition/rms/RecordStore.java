@@ -43,7 +43,7 @@ public class RecordStore
 	public static void deleteRecordStore(String recordStoreName)
 			throws RecordStoreException, RecordStoreNotFoundException
 	{
-		if (MidpTrace.ON) { MidpTrace.call("RecordStore.delete", recordStoreName); }
+		if (MidpTrace.ON) { MidpTrace.event("RecordStore.delete", recordStoreName); }
 		MIDletBridge.getRecordStoreManager().deleteRecordStore(recordStoreName);
 	}
 	
@@ -57,7 +57,7 @@ public class RecordStore
     public static RecordStore openRecordStore(String recordStoreName, boolean createIfNecessary) 
     		throws RecordStoreException, RecordStoreFullException, RecordStoreNotFoundException
     {
-        if (MidpTrace.ON) { MidpTrace.call("RecordStore.open", recordStoreName); }
+        if (MidpTrace.ON) { MidpTrace.event("RecordStore.open", recordStoreName); }
         return MIDletBridge.getRecordStoreManager().openRecordStore(recordStoreName, createIfNecessary);
     }
     

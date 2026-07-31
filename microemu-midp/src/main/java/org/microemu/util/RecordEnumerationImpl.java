@@ -37,6 +37,8 @@ import javax.microedition.rms.RecordStore;
 import javax.microedition.rms.RecordStoreException;
 import javax.microedition.rms.RecordStoreNotOpenException;
 
+import org.microemu.log.MidpTrace;
+
 
 public class RecordEnumerationImpl implements RecordEnumeration
 {
@@ -101,6 +103,10 @@ public class RecordEnumerationImpl implements RecordEnumeration
         byte[] result = ((EnumerationRecord) enumerationRecords.elementAt(currentRecord)).value;
         currentRecord++;
 
+        if (MidpTrace.ON) {
+            MidpTrace.bytes("RecordEnumeration.nextRecord", recordStoreImpl.getName(),
+                    result, 0, result == null ? 0 : result.length);
+        }
         return result;
     }
 
