@@ -12,6 +12,21 @@ use ksni::ToolTip;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+/// Themed icon used when the app icon has not been installed into the user's icon
+/// theme (i.e. "Add to application menu" was never pressed).
+const FALLBACK_ICON_NAME: &str = "applications-development";
+
+/// Prefer our own icon once it exists under `hicolor`; otherwise fall back to a generic
+/// themed one, because a StatusNotifierItem with an unresolvable name shows nothing.
+fn tray_icon_name() -> String {
+    let home = crate::launcher::home_dir();
+    if crate::launcher::icon_paths(&home).iter().any(|p| p.exists()) {
+        crate::launcher::ICON_NAME.to_string()
+    } else {
+        FALLBACK_ICON_NAME.to_string()
+    }
+}
+
 pub struct ArlTray {
     pub quit: Arc<AtomicBool>,
     pub ctx: egui::Context,
@@ -25,12 +40,11 @@ impl ksni::Tray for ArlTray {
         "Arlecchino".into()
     }
     fn icon_name(&self) -> String {
-        // fall back to a generic development icon if the app icon is not themed
-        "applications-development".into()
+        tray_icon_name()
     }
     fn tool_tip(&self) -> ToolTip {
         ToolTip {
-            icon_name: "applications-development".into(),
+            icon_name: tray_icon_name(),
             icon_pixmap: Vec::new(),
             title: "Arlecchino".into(),
             description: tf("tray_status", &[t("status_idle")]),

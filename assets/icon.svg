@@ -1,13 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- PLACEHOLDER app icon for Arlecchino. Swap this file with the real artwork and
-     rebuild (or replace the installed copy at
-     ~/.local/share/icons/hicolor/scalable/apps/arlecchino.svg). Keep it a
-     self-contained SVG with no external references. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <circle cx="64" cy="64" r="60" fill="#1b2838"/>
-  <!-- harlequin diamonds, Steam-blue accent -->
-  <path d="M64 20 L84 64 L64 108 L44 64 Z" fill="#66c0f4"/>
-  <path d="M28 64 L48 40 L48 88 Z" fill="#2a4055"/>
-  <path d="M100 64 L80 40 L80 88 Z" fill="#2a4055"/>
-  <circle cx="64" cy="64" r="9" fill="#0b1722"/>
+<!-- Arlecchino application icon.
+     Original artwork: a symmetric venetian half-mask (colombina) in gold with the
+     harlequin lozenge on the brow. Drawn from the public-domain commedia dell'arte
+     tradition; no third-party artwork was traced or embedded.
+     Self-contained SVG: no raster data, no fonts, no external references.
+     Small-size build (16/24 px, engraving stripped) lives next to this file in the
+     design folder; the installed scalable icon uses this master. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.32" r="0.86">
+      <stop offset="0" stop-color="#272038"/>
+      <stop offset="0.6" stop-color="#150F22"/>
+      <stop offset="1" stop-color="#08060E"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#FFF7DC"/>
+      <stop offset="0.28" stop-color="#F5D68C"/>
+      <stop offset="0.6" stop-color="#D6A648"/>
+      <stop offset="0.85" stop-color="#AE7C24"/>
+      <stop offset="1" stop-color="#7E540F"/>
+    </linearGradient>
+    <linearGradient id="goldRim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F6DA97"/>
+      <stop offset="1" stop-color="#A9761F"/>
+    </linearGradient>
+    <clipPath id="mclip"><path d="M256 176 C286 156 306 148 330 150 C372 152 406 140 430 128 C436 162 434 190 420 214 C434 244 430 284 410 312 C388 344 350 364 316 356 C296 351 280 336 270 314 C265 305 261 300 256 294 C251 300 247 305 242 314 C232 336 216 351 196 356 C162 364 124 344 102 312 C82 284 78 244 92 214 C78 190 76 162 82 128 C106 140 140 152 182 150 C206 148 226 156 256 176 Z"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <rect x="19" y="19" width="474" height="474" rx="91" fill="none" stroke="#C89A3E" stroke-width="8" opacity="0.34"/>
+  <g transform="translate(0,20)">
+    <path d="M256 176 C286 156 306 148 330 150 C372 152 406 140 430 128 C436 162 434 190 420 214 C434 244 430 284 410 312 C388 344 350 364 316 356 C296 351 280 336 270 314 C265 305 261 300 256 294 C251 300 247 305 242 314 C232 336 216 351 196 356 C162 364 124 344 102 312 C82 284 78 244 92 214 C78 190 76 162 82 128 C106 140 140 152 182 150 C206 148 226 156 256 176 Z" fill="url(#gold)"/>
+    <g clip-path="url(#mclip)">
+      <ellipse cx="150" cy="150" rx="230" ry="86" fill="#FFFFFF" opacity="0.17" transform="rotate(-16 150 150)"/>
+      <ellipse cx="360" cy="380" rx="220" ry="90" fill="#5E3C06" opacity="0.24" transform="rotate(-14 360 380)"/>
+      <!-- engraved brow band -->
+      <path d="M92 176 C150 208 200 196 256 216 C312 196 362 208 420 176" fill="none"
+            stroke="#412B08" stroke-width="15" stroke-linecap="round" opacity="0.8"/>
+      <!-- engraved cheek scrolls -->
+      <path d="M112 296 C140 328 178 340 206 328" fill="none" stroke="#412B08" stroke-width="14" stroke-linecap="round" opacity="0.8"/>
+      <path d="M400 296 C372 328 334 340 306 328" fill="none" stroke="#412B08" stroke-width="14" stroke-linecap="round" opacity="0.8"/>
+    </g>
+    <circle cx="256" cy="240" r="12" fill="#412B08" opacity="0.8"/>
+    <path d="M116 248 C130 214 168 200 204 212 C224 219 228 238 214 254 C196 274 148 278 126 262 C116 256 112 252 116 248 Z" fill="#0F0B18"/>
+    <path d="M396 248 C382 214 344 200 308 212 C288 219 284 238 298 254 C316 274 364 278 386 262 C396 256 400 252 396 248 Z" fill="#0F0B18"/>
+    <!-- brow gem -->
+    <path d="M256 96 L294 148 L256 200 L218 148 Z" fill="#B02333"/>
+    <path d="M256 96 L294 148 L256 200 L218 148 Z" fill="none" stroke="url(#goldRim)" stroke-width="15" stroke-linejoin="round"/>
+  </g>
 </svg>

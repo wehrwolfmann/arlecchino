@@ -30,6 +30,9 @@ pub struct Layout {
     pub app_dir: PathBuf,
     /// `~/.local/share/icons/hicolor/scalable/apps/arlecchino.svg`
     pub icon_path: PathBuf,
+    /// Small-size copies of the icon (`hicolor/16x16`, `hicolor/24x24`, …) — kept in
+    /// step with what [`crate::launcher::install`] writes, so nothing is left behind.
+    pub small_icon_paths: Vec<PathBuf>,
     /// `~/.arlecchino` (downloaded engines cache)
     pub engines_dir: PathBuf,
     /// `~/.config/arlecchino` (GUI config)
@@ -42,6 +45,10 @@ impl Layout {
             bin_dir: home.join(".local/bin"),
             app_dir: home.join(".local/share/applications"),
             icon_path: home.join(".local/share/icons/hicolor/scalable/apps/arlecchino.svg"),
+            small_icon_paths: launcher::SMALL_ICON_SIZES
+                .iter()
+                .map(|px| launcher::sized_icons_dir(home, *px).join(launcher::ICON_BASENAME))
+                .collect(),
             engines_dir: home.join(".arlecchino"),
             gui_config_dir: home.join(".config/arlecchino"),
         }
@@ -64,6 +71,7 @@ pub fn plan(layout: &Layout, purge: bool) -> UninstallPlan {
     }
     files.push(layout.app_dir.join(launcher::DESKTOP_BASENAME));
     files.push(layout.icon_path.clone());
+    files.extend(layout.small_icon_paths.iter().cloned());
 
     let mut dirs = Vec::new();
     if purge {
@@ -139,6 +147,17 @@ mod tests {
         assert!(p.dirs.is_empty());
     }
 
+    /// Every icon the launcher installs must appear in the uninstall plan — otherwise
+    /// "Uninstall" leaves orphans in the user's icon theme.
+    #[test]
+    fn plan_covers_every_installed_icon() {
+        let home = Path::new("/home/u");
+        let p = plan(&Layout::from_home(home), false);
+        for icon in launcher::icon_paths(home) {
+            assert!(p.files.contains(&icon), "not planned for removal: {}", icon.display());
+        }
+    }
+
     #[test]
     fn plan_purge_adds_cache_dirs() {
         let layout = Layout::from_home(Path::new("/home/u"));
@@ -192,6 +211,10 @@ mod tests {
         std::fs::create_dir_all(&layout.bin_dir).unwrap();
         std::fs::create_dir_all(&layout.app_dir).unwrap();
         std::fs::create_dir_all(layout.icon_path.parent().unwrap()).unwrap();
+        for small in &layout.small_icon_paths {
+            std::fs::create_dir_all(small.parent().unwrap()).unwrap();
+            std::fs::write(small, b"x").unwrap();
+        }
         std::fs::create_dir_all(&layout.engines_dir).unwrap();
         std::fs::write(layout.bin_dir.join("arlecchino-gui"), b"x").unwrap();
         std::fs::write(layout.app_dir.join("arlecchino-gui.desktop"), b"x").unwrap();
@@ -202,6 +225,9 @@ mod tests {
         assert!(!layout.bin_dir.join("arlecchino-gui").exists());
         assert!(!layout.app_dir.join("arlecchino-gui.desktop").exists());
         assert!(!layout.icon_path.exists());
+        for small in &layout.small_icon_paths {
+            assert!(!small.exists(), "left behind: {}", small.display());
+        }
         assert!(!layout.engines_dir.exists());
         std::fs::remove_dir_all(&tmp).unwrap();
     }

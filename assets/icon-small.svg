@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Arlecchino application icon - small-size build (16/24 px).
+     Same design as assets/icon.svg with the engraving stripped and the eye holes
+     and lozenge enlarged: below ~32 px a whole ornament falls under one pixel and
+     would only muddy the silhouette. Self-contained SVG: no raster data, no fonts,
+     no external references. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="goldS" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#FFF1BE"/><stop offset="0.45" stop-color="#F0CE7E"/><stop offset="0.8" stop-color="#D3A345"/><stop offset="1" stop-color="#A2741F"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="#1A1426"/>
+  <g transform="translate(-30.8,-22.4) scale(1.12)">
+    <path d="M256 176 C286 156 306 148 330 150 C372 152 406 140 430 128 C436 162 434 190 420 214 C434 244 430 284 410 312 C388 344 350 364 316 356 C296 351 280 336 270 314 C265 305 261 300 256 294 C251 300 247 305 242 314 C232 336 216 351 196 356 C162 364 124 344 102 312 C82 284 78 244 92 214 C78 190 76 162 82 128 C106 140 140 152 182 150 C206 148 226 156 256 176 Z" fill="url(#goldS)"/>
+    <path d="M110 250 C126 212 168 196 208 210 C230 218 234 240 218 258 C198 280 144 284 120 266 C109 258 106 254 110 250 Z" fill="#100C1A"/>
+    <path d="M402 250 C386 212 344 196 304 210 C282 218 278 240 294 258 C314 280 368 284 392 266 C403 258 406 254 402 250 Z" fill="#100C1A"/>
+    <path d="M256 92 L298 150 L256 208 L214 150 Z" fill="#C22638"/>
+  </g>
+</svg>

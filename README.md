@@ -111,9 +111,19 @@ offers:
 
 ### Application icon
 
-The app ships a **placeholder** icon at `assets/icon.svg` (embedded into the GUI
-binary). To use a custom icon, replace that file and rebuild, or replace the installed
-copy at `~/.local/share/icons/hicolor/scalable/apps/arlecchino.svg`.
+The app icon is a gold venetian half-mask with the harlequin lozenge on the brow —
+original artwork drawn from the public-domain *commedia dell'arte* imagery, shipped as
+two self-contained SVGs embedded into the GUI binary:
+
+- `assets/icon.svg` — master, installed to
+  `~/.local/share/icons/hicolor/scalable/apps/arlecchino.svg`;
+- `assets/icon-small.svg` — the same design with the engraving stripped, installed to
+  `hicolor/16x16` and `hicolor/24x24`, because below ~32 px a whole ornament falls under
+  one pixel and only muddies the silhouette.
+
+To use a different icon, replace those files and rebuild, or replace the installed
+copies in place. Keep them self-contained (no raster data, no fonts, no external
+references) — the launcher writes the file verbatim.
 
 ## Language (RU / EN)
 
