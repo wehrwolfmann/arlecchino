@@ -559,9 +559,9 @@ pub fn merge_best(
                 }
             }
             let _ = std::fs::write(&target, &best_text);
-            if best_tag.is_some() && best_total2 < total {
+            if let (Some(tag), true) = (best_tag, best_total2 < total) {
                 total = best_total2;
-                log.push(format!("  {rel}: autofix {} (errors->{total})", best_tag.unwrap()));
+                log.push(format!("  {rel}: autofix {tag} (errors->{total})"));
             }
         }
     }

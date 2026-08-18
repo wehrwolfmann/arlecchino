@@ -1,0 +1,90 @@
+Compiled from "Fixture.java"
+public class Fixture {
+  static int a_af64174c;
+
+  java.lang.String b_af64044c;
+
+  public Fixture();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public int mix(int);
+    Code:
+       0: iload_1
+       1: newarray       int
+       3: astore_2
+       4: iload_1
+       5: newarray       char
+       7: astore_3
+       8: new           #7                  // class Fixture$Impl
+      11: dup
+      12: invokespecial #9                  // Method Fixture$Impl."<init>":()V
+      15: astore        4
+      17: aload         4
+      19: iload_1
+      20: invokeinterface #10,  2           // InterfaceMethod Fixture$Sig.go:(I)I
+      25: istore        5
+      27: iconst_0
+      28: istore        6
+      30: iload         6
+      32: iload_1
+      33: if_icmpge     55
+      36: aload_2
+      37: iload         6
+      39: iload         6
+      41: iastore
+      42: iload         5
+      44: aload_3
+      45: arraylength
+      46: iadd
+      47: istore        5
+      49: iinc          6, 1
+      52: goto          30
+      55: iload         5
+      57: getstatic     #16                 // Field a_af64174c:I
+      60: iadd
+      61: ireturn
+
+  public java.lang.String concat(java.lang.String);
+    Code:
+       0: new           #22                 // class java/lang/StringBuffer
+       3: dup
+       4: invokespecial #24                 // Method java/lang/StringBuffer."<init>":()V
+       7: astore_2
+       8: aload_2
+       9: aload_1
+      10: invokevirtual #25                 // Method java/lang/StringBuffer.append:(Ljava/lang/String;)Ljava/lang/StringBuffer;
+      13: getstatic     #16                 // Field a_af64174c:I
+      16: invokevirtual #29                 // Method java/lang/StringBuffer.append:(I)Ljava/lang/StringBuffer;
+      19: aload_0
+      20: getfield      #32                 // Field b_af64044c:Ljava/lang/String;
+      23: invokevirtual #25                 // Method java/lang/StringBuffer.append:(Ljava/lang/String;)Ljava/lang/StringBuffer;
+      26: pop
+      27: aload_2
+      28: invokevirtual #36                 // Method java/lang/StringBuffer.toString:()Ljava/lang/String;
+      31: areturn
+
+  public java.lang.Object cast(java.lang.Object);
+    Code:
+       0: aload_1
+       1: instanceof    #40                 // class java/util/List
+       4: ifeq          18
+       7: aload_1
+       8: checkcast     #40                 // class java/util/List
+      11: iconst_0
+      12: invokeinterface #42,  2           // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+      17: areturn
+      18: new           #46                 // class java/util/ArrayList
+      21: dup
+      22: invokespecial #48                 // Method java/util/ArrayList."<init>":()V
+      25: astore_2
+      26: aload_2
+      27: getstatic     #16                 // Field a_af64174c:I
+      30: invokestatic  #49                 // Method java/lang/String.valueOf:(I)Ljava/lang/String;
+      33: invokeinterface #55,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      38: pop
+      39: aload_2
+      40: areturn
+}

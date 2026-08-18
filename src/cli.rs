@@ -35,6 +35,98 @@ enum Cmd {
     Setup(SetupArgs),
     /// run a J2ME jar in FreeJ2ME
     Emulate(EmulateArgs),
+    /// run a MIDlet windowed via midp-rt (LGPL MicroEmulator fork, SEPARATE process — stage B3')
+    Run(RunArgs),
+    /// behavioural diff: run orig + rebuilt jars headless, compare screen-state sequences and RMS (stage A5)
+    Difftest(DifftestArgs),
+}
+
+#[derive(Args)]
+struct RunArgs {
+    /// game .jar or .jad
+    jar: String,
+    /// path to midp-rt.jar (default: $ARLECCHINO_MIDP_RT, ~/.arlecchino/engines/midp-rt.jar,
+    /// then the midp-rt/ subtree of the python checkout)
+    #[arg(long = "midp-rt")]
+    midp_rt: Option<String>,
+    /// directory for persistent RMS saves (isolated <dir>/.microemulator/...)
+    #[arg(long = "rms-dir")]
+    rms_dir: Option<String>,
+    /// resizable device size, e.g. 240x320 (default: device default)
+    #[arg(long = "size", value_name = "WxH")]
+    size: Option<String>,
+    /// disable MIDlet bytecode instrumentation (escape hatch; the raw loader path
+    /// caps classes at 16 KB and fails as a bare NoClassDefFoundError on bigger ones)
+    #[arg(long = "no-instrument")]
+    no_instrument: bool,
+    /// no window: capture PNG frames + index.json via the runtime's headless mode (stage B4')
+    #[arg(long = "headless")]
+    headless: bool,
+    /// --headless only: output dir for frames + index.json
+    #[arg(short = 'o', long = "out", default_value = "run_headless_out")]
+    out: String,
+    /// --headless only: frames to capture
+    #[arg(long = "frames", default_value_t = 30)]
+    frames: i64,
+    /// --headless only: capture period
+    #[arg(long = "period-ms", default_value_t = 100)]
+    period_ms: i64,
+    /// --headless only: seconds before the first frame
+    #[arg(long = "boot-wait", default_value_t = 2.0)]
+    boot_wait: f64,
+    /// --headless only: JSON input script [{t_ms,key,action},…]
+    #[arg(long = "inputs")]
+    inputs: Option<String>,
+    /// windowed only: write the MIDP call trace (per-frame draw list + session histogram)
+    #[arg(long = "trace", value_name = "FILE")]
+    trace: Option<String>,
+}
+
+#[derive(Args)]
+struct DifftestArgs {
+    /// original jar (the reference)
+    orig: String,
+    /// rebuilt/merged jar (omit with --calibrate)
+    rebuilt: Option<String>,
+    /// JSON input script [{t_ms,key,action},...], same for every run
+    #[arg(long = "input", visible_alias = "inputs")]
+    inputs: Option<String>,
+    /// run ONLY the original, twice, and print the noise baseline instead of a verdict
+    #[arg(long = "calibrate")]
+    calibrate: bool,
+    /// A↔B link: run the SAME jar in BOTH engines and compare SOFTLY
+    #[arg(long = "cross-engine")]
+    cross_engine: bool,
+    /// --cross-engine only: allowed difference in unique-state / state-change counts
+    #[arg(long = "state-tol", default_value_t = 3)]
+    state_tol: i64,
+    #[arg(short = 'o', long = "out", default_value = "difftest_out")]
+    out: String,
+    #[arg(long = "frames", default_value_t = 30)]
+    frames: i64,
+    #[arg(long = "period-ms", default_value_t = 100)]
+    period_ms: i64,
+    #[arg(long = "boot-wait", default_value_t = 2.0)]
+    boot_wait: f64,
+    #[arg(short = 'W', long = "width", default_value_t = 240)]
+    width: i64,
+    #[arg(short = 'H', long = "height", default_value_t = 320)]
+    height: i64,
+    /// allowed first-appearance timing shift, frames (widened to the baseline +1)
+    #[arg(long = "shift-tol", default_value_t = 3)]
+    shift_tol: i64,
+    /// how far below the baseline state-set similarity the rebuilt jar may fall before FAIL
+    #[arg(long = "jaccard-margin", default_value_t = 0.15)]
+    jaccard_margin: f64,
+    /// skip the orig-vs-orig calibration runs
+    #[arg(long = "no-baseline")]
+    no_baseline: bool,
+    /// A7 determinism: ASM-instrument the jar(s) with a virtual clock + fixed-seeded RNG
+    #[arg(long = "fixed-clock")]
+    fixed_clock: bool,
+    /// headless engine: freej2me (default) or midp-rt
+    #[arg(long = "engine", default_value = "freej2me")]
+    engine: String,
 }
 
 #[derive(Args)]
@@ -71,13 +163,16 @@ struct DecompileArgs {
     no_autofix: bool,
     #[arg(long = "no-roundtrip")]
     no_roundtrip: bool,
+    /// semantic round-trip check: flag methods whose symbolic reference set drifted
+    #[arg(long = "semdiff")]
+    semdiff: bool,
 }
 
 #[derive(Args)]
 struct SetupArgs {
     #[arg(long = "engines-root")]
     engines_root: Option<String>,
-    /// comma list: vineflower,cfr,procyon,jadx,jd-core,jode,fernflower,dava,asm
+    /// comma list: vineflower,cfr,procyon,jadx,jd-core,jode,fernflower,dava,asm,midp-rt
     #[arg(long = "only")]
     only: Option<String>,
     #[arg(long = "no-freej2me")]
@@ -288,6 +383,60 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         }
     }
 
+    // ── семантический round-trip (по желанию, по умолчанию выключен) ────────
+    let mut semdiff_report: Option<crate::semdiff::SemdiffReport> = None;
+    if let (true, Some(md), false) = (a.semdiff, merged_dir.as_ref(), a.no_roundtrip) {
+        println!("\n== SEMANTIC ROUND-TRIP (semdiff) ==");
+        let classes_dir = md.join("_classes");
+        // пропускаем классы, которые не пересобрались (их .class — засеянный
+        // ОРИГИНАЛ, самосравнение было бы пустым и обманчивым)
+        let skip: BTreeSet<String> = rt
+            .as_ref()
+            .map(|r| {
+                r.excluded_broken
+                    .iter()
+                    .map(|rel| {
+                        rel.strip_suffix(".java").unwrap_or(rel).replace(std::path::MAIN_SEPARATOR, "/")
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let sem = crate::semdiff::check(&jar, &classes_dir, rename_map.as_deref(), &skip);
+        if !sem.available {
+            println!("  javap unavailable — semdiff skipped (no-op).");
+        } else {
+            println!(
+                "  checked {} class(es); skipped {} (not recompiled)",
+                sem.checked,
+                sem.skipped.len()
+            );
+            if sem.total_flagged_methods == 0 {
+                println!("  no semantic drift flagged.");
+            } else {
+                println!(
+                    "  FLAGGED {} method(s) across {} class(es):",
+                    sem.total_flagged_methods,
+                    sem.flagged_classes.len()
+                );
+                for fc in &sem.flagged_classes {
+                    for m in &fc.flagged {
+                        println!("    {}::{} — {}", fc.class, m.method, m.reason);
+                        if let Some(crate::semdiff::OnlyOrig::Refs(v)) = &m.only_orig {
+                            if !v.is_empty() {
+                                println!("        only-orig: [{}]", v.join(", "));
+                            }
+                        }
+                        if let Some(v) = &m.only_recompiled {
+                            if !v.is_empty() {
+                                println!("        only-recompiled: [{}]", v.join(", "));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        semdiff_report = Some(sem);
+    }
     // quality metrics (syntactic correctness / cross-decompiler agreement / behavioral)
     let mut metrics: Option<crate::metrics::Metrics> = None;
     if let Some(md) = &merged_dir {
@@ -349,6 +498,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         rt.as_ref(),
         deobf_info.as_ref(),
         metrics.as_ref(),
+        semdiff_report.as_ref(),
     );
     let _ = std::fs::write(
         out.join("report.json"),
@@ -396,6 +546,7 @@ fn build_report_json(
     rt: Option<&RoundTrip>,
     deobf_info: Option<&serde_json::Value>,
     metrics: Option<&crate::metrics::Metrics>,
+    semdiff: Option<&crate::semdiff::SemdiffReport>,
 ) -> serde_json::Value {
     let ranking_json: Vec<serde_json::Value> = ranking
         .iter()
@@ -446,6 +597,7 @@ fn build_report_json(
         "roundtrip": match rt { Some(r) => serde_json::to_value(r).unwrap_or(serde_json::Value::Null), None => serde_json::Value::Null },
         "deobf": match deobf_info { Some(d) => d.clone(), None => serde_json::Value::Null },
         "metrics": match metrics { Some(m) => serde_json::to_value(m).unwrap_or(serde_json::Value::Null), None => serde_json::Value::Null },
+        "semdiff": match semdiff { Some(m) => serde_json::to_value(m).unwrap_or(serde_json::Value::Null), None => serde_json::Value::Null },
     })
 }
 
@@ -653,7 +805,9 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
 
     // backward-compat: `arlecchino foo.jar ...` == `arlecchino decompile foo.jar ...`
     if let Some(first) = argv.first() {
-        if !first.starts_with('-') && !["decompile", "setup", "emulate"].contains(&first.as_str()) {
+        if !first.starts_with('-')
+            && !["decompile", "setup", "emulate", "run", "difftest"].contains(&first.as_str())
+        {
             argv.insert(0, "decompile".into());
         }
     }
@@ -673,10 +827,371 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
         Some(Cmd::Decompile(a)) => cmd_decompile(&a),
         Some(Cmd::Setup(a)) => cmd_setup(&a),
         Some(Cmd::Emulate(a)) => cmd_emulate(&a),
+        Some(Cmd::Run(a)) => cmd_run(&a),
+        Some(Cmd::Difftest(a)) => cmd_difftest(&a),
         None => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
             let _ = cmd.print_help();
             1
         }
+    }
+}
+
+// ───────────────────────────── run (midp-rt) ────────────────────────────────
+fn load_inputs(path: Option<&str>) -> Result<Option<Vec<crate::diffrun::InputEvent>>, String> {
+    match path {
+        None => Ok(None),
+        Some(p) => {
+            let text = util::read_text_lossy(Path::new(p)).map_err(|e| e.to_string())?;
+            let v: Vec<crate::diffrun::InputEvent> =
+                serde_json::from_str(&text).map_err(|e| format!("bad input script {p}: {e}"))?;
+            Ok(Some(v))
+        }
+    }
+}
+
+fn parse_size(s: &str) -> Option<(i64, i64)> {
+    let low = s.to_lowercase();
+    let (w, h) = low.split_once('x')?;
+    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+}
+
+fn cmd_run(a: &RunArgs) -> i32 {
+    use crate::midprun;
+    let game = util::absolutize(Path::new(&a.jar));
+    if !game.exists() {
+        println!("jar/jad not found: {}", game.display());
+        return 2;
+    }
+    let midp_rt = match midprun::find_midp_rt(a.midp_rt.as_deref(), None) {
+        Some(p) => p,
+        None => {
+            let checked = match a.midp_rt.as_deref() {
+                Some(p) => vec![util::expanduser(p)],
+                None => vec![
+                    engines_root_default().join("midp-rt.jar"),
+                    midprun::default_midp_rt_repo().join("build").join("midp-rt.jar"),
+                ],
+            };
+            println!("{}", midprun::missing_hint(&checked));
+            return 1;
+        }
+    };
+
+    let (mut width, mut height) = (None, None);
+    if let Some(sz) = &a.size {
+        match parse_size(sz) {
+            Some((w, h)) => {
+                width = Some(w);
+                height = Some(h);
+            }
+            None => {
+                println!("bad --size {sz:?} (expected WxH, e.g. 240x320)");
+                return 2;
+            }
+        }
+    }
+
+    let rms_dir = a.rms_dir.as_deref().map(|d| {
+        let p = util::absolutize(&util::expanduser(d));
+        let _ = std::fs::create_dir_all(&p);
+        p
+    });
+
+    if a.headless {
+        let inputs = match load_inputs(a.inputs.as_deref()) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("{e}");
+                return 2;
+            }
+        };
+        let out = util::absolutize(Path::new(&a.out));
+        println!(
+            "== arlecchino run --headless :: {} via {} ==",
+            file_name(&game),
+            midp_rt.display()
+        );
+        let opts = crate::diffrun::RunOpts {
+            max_frames: a.frames,
+            frame_period_ms: a.period_ms,
+            boot_wait_s: a.boot_wait,
+            width: width.unwrap_or(crate::diffrun::DEFAULT_W),
+            height: height.unwrap_or(crate::diffrun::DEFAULT_H),
+            rms_dir,
+            deterministic_capture: false,
+        };
+        let res = match midprun::run_headless_midp_rt(
+            &game,
+            &out,
+            inputs.as_deref(),
+            &opts,
+            Some(&midp_rt.to_string_lossy()),
+            !a.no_instrument,
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                println!("headless run failed: {e}");
+                return 1;
+            }
+        };
+        for f in &res.frames {
+            println!(
+                "  frame {:03} {}x{} {} sha256={}",
+                f.index,
+                f.width,
+                f.height,
+                if f.blank { "BLANK" } else { "data " },
+                &f.sha256[..16.min(f.sha256.len())]
+            );
+        }
+        let uniq: BTreeSet<&String> = res.frames.iter().map(|f| &f.sha256).collect();
+        println!(
+            "  captured {} frames, unique states: {}, non-empty: {}",
+            res.frames.len(),
+            uniq.len(),
+            res.any_nonblank()
+        );
+        println!("  frames + index.json: {}", out.display());
+        return if res.any_nonblank() { 0 } else { 1 };
+    }
+
+    let trace = a.trace.as_deref().map(|t| {
+        let p = util::absolutize(&util::expanduser(t));
+        if let Some(d) = p.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        println!("   MIDP call trace -> {}", p.display());
+        p
+    });
+    println!("== arlecchino run :: {} via {} ==", file_name(&game), midp_rt.display());
+    midprun::run_midlet(
+        &game,
+        &midp_rt,
+        &midprun::WindowOpts {
+            width,
+            height,
+            rms_dir,
+            instrument: !a.no_instrument,
+            trace,
+        },
+    )
+}
+
+// ───────────────────────────── difftest ─────────────────────────────────────
+/// Этап A5 — стенд поведенческого сравнения (PLAN_runtime.md, блок A).
+///
+/// Обычный режим: откалибровать шум на ОРИГИНАЛЕ (прогнать его дважды), прогнать
+/// пересобранный jar, сравнить последовательности состояний экрана + RMS, вердикт.
+/// `--calibrate`: только оригинал, дважды — печатает базу шума вместо вердикта.
+fn cmd_difftest(a: &DifftestArgs) -> i32 {
+    use crate::difftest as dt;
+    let orig = util::absolutize(Path::new(&a.orig));
+    if !orig.exists() {
+        println!("jar not found: {}", orig.display());
+        return 2;
+    }
+    let mut rebuilt = PathBuf::new();
+    if !a.calibrate && !a.cross_engine {
+        match &a.rebuilt {
+            None => {
+                println!("difftest needs <rebuilt.jar> (or use --calibrate)");
+                return 2;
+            }
+            Some(r) => {
+                rebuilt = util::absolutize(Path::new(r));
+                if !rebuilt.exists() {
+                    println!("jar not found: {}", rebuilt.display());
+                    return 2;
+                }
+            }
+        }
+    }
+    if !dt::ENGINES.contains(&a.engine.as_str()) {
+        println!("unknown --engine {:?} (choose from {:?})", a.engine, dt::ENGINES);
+        return 2;
+    }
+
+    let inputs = match load_inputs(a.inputs.as_deref()) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{e}");
+            return 2;
+        }
+    };
+    let out = util::absolutize(Path::new(&a.out));
+    let opts = crate::diffrun::RunOpts {
+        max_frames: a.frames,
+        frame_period_ms: a.period_ms,
+        boot_wait_s: a.boot_wait,
+        width: a.width,
+        height: a.height,
+        rms_dir: None,
+        deterministic_capture: false,
+    };
+
+    let fixed_clock = a.fixed_clock || crate::fixedclock::env_enabled();
+    if fixed_clock {
+        println!(
+            "   [A7] fixed-clock ON — instrumenting jar(s) with a virtual clock + \
+             fixed-seeded RNG (frame-deterministic replay)."
+        );
+    }
+
+    if a.cross_engine {
+        println!(
+            "== difftest --cross-engine :: {} (freej2me vs midp-rt, same inputs) ==",
+            file_name(&orig)
+        );
+        let (cmp, run_a, run_b) = match dt::cross_engine(
+            &orig,
+            &out,
+            inputs.as_deref(),
+            ("freej2me", "midp-rt"),
+            a.state_tol,
+            fixed_clock,
+            &opts,
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("difftest unavailable: {e}");
+                return 2;
+            }
+        };
+        for r in [&run_a, &run_b] {
+            let status = match &r.error {
+                Some(e) => format!("FAILED: {e}"),
+                None => format!(
+                    "{} frames, {} unique states, non-blank={}, rms stores={}",
+                    r.hashes.len(),
+                    r.hashes.iter().collect::<BTreeSet<_>>().len(),
+                    r.nonblank,
+                    {
+                        let n = dt::rms_store_names(r);
+                        if n.is_empty() {
+                            "-".to_string()
+                        } else {
+                            format!("['{}']", n.iter().cloned().collect::<Vec<_>>().join("', '"))
+                        }
+                    }
+                ),
+            };
+            println!("  {}: {status}", r.label);
+        }
+        println!(
+            "\n== CROSS-ENGINE: {} ==",
+            if cmp.agree { "AGREE (structure matches softly)" } else { "DIVERGE" }
+        );
+        for r in &cmp.reasons {
+            println!("  ✗ {r}");
+        }
+        for n in &cmp.notes {
+            println!("  ℹ {n}");
+        }
+        println!("  report: {}", out.join("cross_engine_report.md").display());
+        return if cmp.agree { 0 } else { 1 };
+    }
+
+    if a.calibrate {
+        println!(
+            "== difftest --calibrate :: {} (2 runs, engine {}) ==",
+            file_name(&orig),
+            a.engine
+        );
+        let (cmp, run_a, run_b) =
+            match dt::calibrate(&orig, &out, inputs.as_deref(), &a.engine, fixed_clock, &opts) {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("difftest unavailable: {e}");
+                    return 2;
+                }
+            };
+        for r in [&run_a, &run_b] {
+            if let Some(e) = &r.error {
+                println!("  run {} FAILED: {e}", r.label);
+                return 1;
+            }
+            println!(
+                "  {}: {} frames, {} unique states, non-blank={}, rms files={}",
+                r.label,
+                r.hashes.len(),
+                r.hashes.iter().collect::<BTreeSet<_>>().len(),
+                r.nonblank,
+                r.rms.len()
+            );
+        }
+        println!("\n  noise baseline (same jar, two runs):");
+        println!(
+            "    state sets equal:      {} (Jaccard {:.2})",
+            cmp.sets_equal(),
+            cmp.jaccard
+        );
+        println!(
+            "    first-appearance order: {}",
+            if cmp.order_ok { "same" } else { "DIFFERS" }
+        );
+        println!("    max timing shift:       {} frame(s)", cmp.max_shift);
+        println!(
+            "    frame-by-frame match:   {:.0}% (timing-sensitive, expected <100%)",
+            cmp.frame_match_rate * 100.0
+        );
+        println!("    RMS byte-identical:     {}", run_a.rms == run_b.rms);
+        return 0;
+    }
+
+    println!(
+        "== difftest :: {} vs {} (engine {}) ==",
+        file_name(&orig),
+        file_name(&rebuilt),
+        a.engine
+    );
+    let verdict = match dt::difftest(
+        &orig,
+        &rebuilt,
+        &out,
+        inputs.as_deref(),
+        a.shift_tol,
+        a.jaccard_margin,
+        !a.no_baseline,
+        &a.engine,
+        fixed_clock,
+        &opts,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("difftest unavailable: {e}");
+            return 2;
+        }
+    };
+    println!(
+        "\n== VERDICT: {} ==",
+        if verdict.passed { "PASS (matches within noise)" } else { "FAIL" }
+    );
+    for r in &verdict.reasons {
+        println!("  ✗ {r}");
+    }
+    for n in &verdict.notes {
+        println!("  ℹ {n}");
+    }
+    if let Some(b) = &verdict.baseline {
+        println!(
+            "  baseline (orig vs orig): Jaccard {:.2}, shift {}, order {}",
+            b.jaccard,
+            b.max_shift,
+            if b.order_ok { "ok" } else { "unstable" }
+        );
+    }
+    let c = &verdict.cross;
+    println!(
+        "  cross (orig vs rebuilt):  Jaccard {:.2}, shift {}, order {}",
+        c.jaccard,
+        c.max_shift,
+        if c.order_ok { "ok" } else { "DIFFERS" }
+    );
+    println!("  report: {}", out.join("difftest_report.md").display());
+    if verdict.passed {
+        0
+    } else {
+        1
     }
 }

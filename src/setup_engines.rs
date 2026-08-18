@@ -225,6 +225,13 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
     if only.is_none() || in_only("asm") {
         result.push(("asm".to_string(), setup_asm(root)));
     }
+    // Рантайм MIDP (LGPL-форк MicroEmulator) — ОТДЕЛЬНЫЙ репозиторий/артефакт,
+    // сюда он никогда не качается и не вкладывается. Этот шаг только НАХОДИТ
+    // midp-rt.jar (настраиваемо: $ARLECCHINO_MIDP_RT / корень движков / чекаут
+    // форка) и сообщает, лежат ли рядом его jar-ы ASM.
+    if only.is_none() || in_only("midp-rt") {
+        result.push(("midp-rt".to_string(), crate::midprun::setup_midp_rt(Some(root))));
+    }
     result
 }
 
@@ -253,13 +260,20 @@ pub fn setup_asm(root: &Path) -> String {
         let trimmed: String = joined.chars().take(300).collect();
         return format!("FAILED (no ASM jars; offline?). {trimmed}");
     }
+    // компилируем ОБА ASM-помощника против тех jar-ов ASM, что есть: переименователь
+    // членов (конвейер decompile) и A7-трансформер детерминированных часов
+    // (difftest --fixed-clock по запросу). Механика и каталог _classes/ общие.
     let comp = rename::compile_helper(Some(root));
+    let comp_a7 = crate::fixedclock::compile_helper(Some(root));
     let tail = if failed.is_empty() {
         String::new()
     } else {
         format!(" [missing: {}]", failed.join(", "))
     };
-    format!("jars={got}/{}; helper {comp}{tail}", ASM_MODULES.len())
+    format!(
+        "jars={got}/{}; renamer {comp}; fixed-clock {comp_a7}{tail}",
+        ASM_MODULES.len()
+    )
 }
 
 // ── FreeJ2ME ─────────────────────────────────────────────────────────────────

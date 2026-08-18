@@ -18,16 +18,34 @@ pub fn find_freej2me(explicit: Option<&str>, root: Option<&Path>) -> Option<Path
     let root = root
         .map(|r| r.to_path_buf())
         .unwrap_or_else(engines_root_default);
-    for cand in [
+    [
         root.join("freej2me.jar"),
         root.join("freej2me-src").join("build").join("freej2me.jar"),
         root.join("fj2me").join("build").join("freej2me.jar"),
-    ] {
-        if cand.exists() {
-            return Some(cand);
+    ]
+    .into_iter()
+    .find(|cand| cand.exists())
+}
+
+/// Найти jar LIBRETRO-фронтенда FreeJ2ME-plus (`freej2me-lr.jar`) — тот самый
+/// фронтенд на канале stdin/stdout, которым `diffrun` снимает кадры безголово
+/// (блок A). Ставится рядом с freej2me.jar командой `arlecchino setup`.
+pub fn find_freej2me_lr(explicit: Option<&str>, root: Option<&Path>) -> Option<PathBuf> {
+    if let Some(e) = explicit {
+        let p = PathBuf::from(e);
+        if p.exists() {
+            return Some(p);
         }
     }
-    None
+    let root = root
+        .map(|r| r.to_path_buf())
+        .unwrap_or_else(engines_root_default);
+    [
+        root.join("freej2me-lr.jar"),
+        root.join("freej2me-src").join("build").join("freej2me-lr.jar"),
+    ]
+    .into_iter()
+    .find(|cand| cand.exists())
 }
 
 pub fn emulate(

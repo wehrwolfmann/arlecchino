@@ -122,7 +122,7 @@ pub fn fold_interface_static_init(text: &str) -> String {
     // rewrite each declaration to include its initialiser (back-to-front)
     let mut new = text.to_string();
     let mut ordered = decls.clone();
-    ordered.sort_by(|a, b| b.1.cmp(&a.1)); // by start desc
+    ordered.sort_by_key(|x| std::cmp::Reverse(x.1)); // by start desc
     for (name, start, end, whole) in ordered {
         // whole ends with ';'
         let mut nd = whole[..whole.len() - 1].to_string();

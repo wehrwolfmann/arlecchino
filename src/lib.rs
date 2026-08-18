@@ -21,13 +21,18 @@ pub mod cli;
 pub mod config;
 pub mod core;
 pub mod deobf;
+pub mod difftest;
+pub mod diffrun;
 pub mod emulate;
+pub mod fixedclock;
 pub mod i18n;
 pub mod metrics;
+pub mod midprun;
 pub mod normalize;
 pub mod permethod;
 pub mod rename;
 pub mod roundtrip;
+pub mod semdiff;
 pub mod setup_engines;
 pub mod util;
 

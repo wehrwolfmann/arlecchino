@@ -25,11 +25,9 @@ pub const HELPER_SOURCE: &str = include_str!("../assets/MemberRenamer.java");
 fn candidate_roots(root: Option<&Path>) -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
     let default = engines_root_default();
-    for r in [root.map(|p| p.to_path_buf()), Some(default)] {
-        if let Some(p) = r {
-            if !roots.contains(&p) {
-                roots.push(p);
-            }
+    for p in [root.map(|p| p.to_path_buf()), Some(default)].into_iter().flatten() {
+        if !roots.contains(&p) {
+            roots.push(p);
         }
     }
     roots

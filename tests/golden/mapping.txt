@@ -1,0 +1,3 @@
+Fixture.a I -> a_af64174c
+Fixture.b Ljava/lang/String; -> b_af64044c  (type-shadow)
+Fixture.mix (I)I -> mix_af6417ff

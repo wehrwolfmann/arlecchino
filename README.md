@@ -59,6 +59,16 @@ arlecchino decompile <jar> [-o OUT] [-cp DEPS] [--config C] [-j N]
                      [--rename-members | --no-rename-members]
                      [--per-method] [--deobf] [--no-autofix] [--no-roundtrip]
 arlecchino emulate   <jar> [--freej2me P] [-W 176] [-H 220] [-s 2]
+arlecchino run       <jar|jad> [--midp-rt P] [--size WxH] [--rms-dir D]
+                     [--no-instrument] [--trace FILE]
+                     [--headless [-o OUT] [--frames N] [--period-ms N]
+                                 [--boot-wait S] [--inputs SCRIPT]]
+arlecchino difftest  <orig.jar> [rebuilt.jar] [--input SCRIPT] [-o OUT]
+                     [--calibrate | --cross-engine [--state-tol N]]
+                     [--engine freej2me|midp-rt] [--frames N] [--period-ms N]
+                     [--boot-wait S] [-W 240] [-H 320]
+                     [--shift-tol N] [--jaccard-margin F] [--no-baseline]
+                     [--fixed-clock]
 ```
 
 `arlecchino <jar> …` is shorthand for `arlecchino decompile <jar> …` (back-compat).
@@ -91,10 +101,39 @@ license; nothing is vendored in this repo.
    bytecode.
 7. Writes `merged/`, `report.md`, `report.json`, and per-engine trees under `-o`.
 
+`decompile --semdiff` adds a **semantic round-trip**: per method, the symbolic
+reference sets of the original and the recompiled bytecode are compared (owner
+dropped, `StringBuffer`/`StringBuilder` unified, renamer mapping reconciled), so an
+auto-fix that silently changed semantics is flagged even when member counts match.
+
 ### `emulate` — run the jar in FreeJ2ME
 
 Thin wrapper around FreeJ2ME's AWT front-end:
 `java -jar freej2me.jar <midlet.jar> W H scale`.
+
+### `run` — run the MIDlet in midp-rt
+
+Launches the MIDlet in **midp-rt** (an LGPL fork of MicroEmulator) as a **separate
+process** — the LGPL boundary is the process boundary; nothing LGPL is linked here.
+`MIDlet-1` is parsed from the manifest/`.jad` so the MIDlet auto-starts instead of
+waiting in the runtime's launcher. `--headless` captures PNG frames + `index.json`
+instead of opening a window.
+
+### `difftest` — behavioural diff (does the rebuilt jar still behave the same?)
+
+Runs both jars headless with the same input script and compares the **structure of
+screen states** — the set of frame hashes, the order they first appear in and the
+first-appearance frame indices (with a shift tolerance) — plus RMS side effects and
+crash signals from the emulator's stderr. Frame *content* is deterministic, frame
+*timing* is not, so a noise baseline (the same jar run twice) is measured first and
+the verdict only fails on signals stronger than that noise.
+
+* `--calibrate` — only the baseline (one jar, twice).
+* `--cross-engine` — the same jar in FreeJ2ME-plus **and** midp-rt, compared softly
+  (structure only; pixels never match across engines, so the pixel Jaccard is
+  informational).
+* `--fixed-clock` — ASM-instrument the jar(s) with a virtual clock and a fixed-seeded
+  RNG first, so replays become frame-identical.
 
 ## GUI
 

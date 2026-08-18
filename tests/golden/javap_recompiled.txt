@@ -1,0 +1,68 @@
+Compiled from "Fixture.java"
+public class Fixture {
+  static int a_af64174c;
+
+  java.lang.String b_af64044c;
+
+  public Fixture();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public int mix(int);
+    Code:
+       0: iload_1
+       1: newarray       int
+       3: astore_2
+       4: iload_1
+       5: newarray       int
+       7: astore_3
+       8: new           #7                  // class Fixture$Impl
+      11: dup
+      12: invokespecial #9                  // Method Fixture$Impl."<init>":()V
+      15: astore        4
+      17: aload         4
+      19: iload_1
+      20: invokevirtual #10                 // Method Fixture$Sig.go:(I)I
+      23: istore        5
+      25: iconst_0
+      26: istore        6
+      28: iload         6
+      30: iload_1
+      31: if_icmpge     53
+      34: aload_2
+      35: iload         6
+      37: iload         6
+      39: iastore
+      40: iload         5
+      42: aload_3
+      43: arraylength
+      44: iadd
+      45: istore        5
+      47: iinc          6, 1
+      50: goto          28
+      53: iload         5
+      55: getstatic     #16                 // Field a_af64174c:I
+      58: iadd
+      59: ireturn
+
+  public java.lang.String concat(java.lang.String);
+    Code:
+       0: new           #22                 // class java/lang/StringBuilder
+       3: dup
+       4: invokespecial #24                 // Method java/lang/StringBuilder."<init>":()V
+       7: astore_2
+       8: aload_2
+       9: aload_1
+      10: invokevirtual #25                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      13: getstatic     #16                 // Field a_af64174c:I
+      16: invokevirtual #29                 // Method java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;
+      19: aload_0
+      20: getfield      #32                 // Field b_af64044c:Ljava/lang/String;
+      23: invokevirtual #25                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      26: pop
+      27: aload_2
+      28: invokevirtual #36                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      31: areturn
+}

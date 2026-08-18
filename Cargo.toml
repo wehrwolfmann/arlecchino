@@ -31,6 +31,8 @@ ureq = { version = "2", features = ["tls", "json"] }
 eframe = { version = "0.31", optional = true }
 egui_extras = { version = "0.31", optional = true }
 ksni = { version = "0.2", optional = true }
+sha2 = "0.10"
+png = "0.18"
 
 [features]
 default = []

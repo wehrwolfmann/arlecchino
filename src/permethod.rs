@@ -51,7 +51,7 @@ fn param_type(p: &str) -> String {
         tok.truncate(i);
     }
     // strip array brackets
-    tok = tok.replace("[]", "").replace('[', "").replace(']', "");
+    tok = tok.replace("[]", "").replace(['[', ']'], "");
     // last dotted segment
     if let Some(pos) = tok.rfind('.') {
         tok = tok[pos + 1..].to_string();

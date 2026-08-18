@@ -1,0 +1,2304 @@
+{
+ "autostart_jad": [
+  "com.x.Main",
+  "<TMP>/synth.jar",
+  "<TMP>/synth.jad"
+ ],
+ "autostart_jar": [
+  "com.x.Main",
+  "<TMP>/synth.jar",
+  null
+ ],
+ "autostart_missing": [
+  null,
+  null,
+  null
+ ],
+ "build_headless_argv": [
+  "java",
+  "-Djava.awt.headless=true",
+  "-Duser.home=<TMP>/home",
+  "-cp",
+  "<TMP>/engines/midp-rt.jar:<TMP>/engines/asm-9.7.jar",
+  "org.microemu.app.Headless",
+  "--frames-dir",
+  "<TMP>/frames",
+  "--frames",
+  "12",
+  "--period-ms",
+  "50",
+  "--boot-wait-ms",
+  "1500",
+  "--inputs",
+  "<TMP>/in.json",
+  "--rms",
+  "<TMP>/rmsdir",
+  "--resizableDevice",
+  "240",
+  "320",
+  "<TMP>/synth.jar"
+ ],
+ "build_run_argv": [
+  "java",
+  "-Dmidprt.trace=<TMP>/trace.txt",
+  "-Duser.home=<TMP>/rmsdir",
+  "-cp",
+  "<TMP>/engines/midp-rt.jar:<TMP>/engines/asm-9.7.jar",
+  "org.microemu.app.Main",
+  "--rms",
+  "file",
+  "--resizableDevice",
+  "240",
+  "320",
+  "--appclasspath",
+  "<TMP>/synth.jar",
+  "com.x.Main"
+ ],
+ "build_run_argv_launcher": [
+  "java",
+  "-cp",
+  "<TMP>/engines/midp-rt.jar:<TMP>/engines/asm-9.7.jar",
+  "org.microemu.app.Main",
+  "--rms",
+  "file",
+  "--no-instrument",
+  "<TMP>/nope.jar"
+ ],
+ "canon_ref": [
+  [
+   "Field",
+   "H",
+   "I"
+  ],
+  [
+   "Method",
+   "foo",
+   "(I)V"
+  ],
+  [
+   "InterfaceMethod",
+   "go",
+   "(I)I"
+  ],
+  [
+   "Type",
+   "StringBuilder"
+  ],
+  [
+   "Type",
+   "String"
+  ],
+  [
+   "Method",
+   "\"<init>\"",
+   "()V"
+  ],
+  [
+   "Field",
+   "a",
+   "Ljava/lang/StringBuilder;"
+  ],
+  [
+   "?",
+   "InvokeDynamic #0:makeConcat"
+  ]
+ ],
+ "canon_ref_nomap": [
+  [
+   "Field",
+   "H",
+   "I"
+  ],
+  [
+   "Method",
+   "foo",
+   "(I)V"
+  ],
+  [
+   "InterfaceMethod",
+   "go",
+   "(I)I"
+  ],
+  [
+   "Type",
+   "StringBuilder"
+  ],
+  [
+   "Type",
+   "String"
+  ],
+  [
+   "Method",
+   "\"<init>\"",
+   "()V"
+  ],
+  [
+   "Field",
+   "a",
+   "Ljava/lang/StringBuilder;"
+  ],
+  [
+   "?",
+   "InvokeDynamic #0:makeConcat"
+  ]
+ ],
+ "child_args": [
+  "240",
+  "320",
+  "0",
+  "0",
+  "60",
+  "0",
+  "0",
+  "0",
+  "4",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0",
+  "1",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0",
+  "0"
+ ],
+ "cmd_bytes": [
+  [
+   15,
+   0,
+   0,
+   0,
+   0
+  ],
+  [
+   11,
+   0,
+   0,
+   16,
+   0
+  ],
+  [
+   3,
+   0,
+   0,
+   0,
+   18
+  ],
+  [
+   2,
+   0,
+   0,
+   0,
+   0
+  ],
+  [
+   10,
+   1,
+   2,
+   3,
+   4
+  ]
+ ],
+ "collapse_states": [
+  [
+   [
+    "a",
+    2
+   ],
+   [
+    "b",
+    3
+   ],
+   [
+    "a",
+    1
+   ]
+  ],
+  [
+   [
+    "s",
+    3
+   ],
+   [
+    "m",
+    2
+   ],
+   [
+    "a",
+    1
+   ],
+   [
+    "b",
+    1
+   ],
+   [
+    "a",
+    1
+   ]
+  ],
+  [
+   [
+    "x",
+    1
+   ],
+   [
+    "y",
+    1
+   ]
+  ],
+  [
+   [
+    "s",
+    1
+   ],
+   [
+    "m",
+    1
+   ]
+  ],
+  [
+   [
+    "s",
+    1
+   ],
+   [
+    "m",
+    1
+   ],
+   [
+    "g",
+    1
+   ]
+  ],
+  [],
+  [
+   [
+    "s",
+    1
+   ]
+  ],
+  [
+   [
+    "a1",
+    2
+   ],
+   [
+    "a2",
+    1
+   ],
+   [
+    "a3",
+    1
+   ]
+  ],
+  [
+   [
+    "s",
+    1
+   ],
+   [
+    "m",
+    9
+   ]
+  ]
+ ],
+ "compare_class": {
+  "class": "Fixture",
+  "flagged": [
+   {
+    "method": "int mix(int)",
+    "only_orig": [
+     "('InterfaceMethod', 'go', '(I)I')",
+     "('NewArray', 'char')"
+    ],
+    "only_recompiled": [
+     "('Method', 'go', '(I)I')"
+    ],
+    "reason": "symbolic reference set differs"
+   },
+   {
+    "method": "java.lang.Object cast(java.lang.Object)",
+    "only_orig": true,
+    "reason": "method present on one side only"
+   }
+  ]
+ },
+ "compare_sequences": [
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 1.0,
+   "max_shift": 0,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 0.875,
+   "jaccard": 1.0,
+   "max_shift": 1,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 0.0,
+   "jaccard": 0.0,
+   "max_shift": 0,
+   "only_a": [
+    "x",
+    "y"
+   ],
+   "only_b": [
+    "p",
+    "q"
+   ],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 0.666666666667,
+   "max_shift": 0,
+   "only_a": [],
+   "only_b": [
+    "crash"
+   ],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 0.333333333333,
+   "jaccard": 1.0,
+   "max_shift": 1,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": false,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 1.0,
+   "max_shift": 0,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 0.0,
+   "max_shift": 0,
+   "only_a": [
+    "s"
+   ],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 0.0,
+   "jaccard": 0.0,
+   "max_shift": 0,
+   "only_a": [
+    "a1",
+    "a2",
+    "a3"
+   ],
+   "only_b": [
+    "b1",
+    "b2",
+    "b3"
+   ],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 0.5,
+   "jaccard": 1.0,
+   "max_shift": 5,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  }
+ ],
+ "cross_engine": [
+  {
+   "agree": true,
+   "name": "agree",
+   "notes": [
+    "both engines wrote RMS (store names per engine, NOT comparable across): freej2me: ['save']; midp-rt: ['save']",
+    "pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00",
+    "state-change frames freej2me: [2, 3]; midp-rt: [2, 3]"
+   ],
+   "pixel_jaccard": 0.0,
+   "reasons": [],
+   "report_md": "# cross-engine report (A↔B link)\n\n- jar: `/g.jar`\n- engines: `freej2me` vs `midp-rt`\n\n## VERDICT: AGREE (soft, structural — pixels are NOT compared across engines)\n\n- ℹ both engines wrote RMS (store names per engine, NOT comparable across): freej2me: ['save']; midp-rt: ['save']\n- ℹ pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00\n- ℹ state-change frames freej2me: [2, 3]; midp-rt: [2, 3]\n\n## Runs\n\n| engine | frames | unique states | state changes | non-blank | RMS stores | exceptions |\n|---|---|---|---|---|---|---|\n| freej2me | 4 | 3 | 2 | yes | save | - |\n| midp-rt | 4 | 3 | 2 | yes | save | - |\n",
+   "states": [
+    3,
+    3
+   ],
+   "transitions": [
+    [
+     2,
+     3
+    ],
+    [
+     2,
+     3
+    ]
+   ]
+  },
+  {
+   "agree": false,
+   "name": "state-count",
+   "notes": [
+    "pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00",
+    "state-change frames freej2me: [1, 2, 3, 4, 5]; midp-rt: -"
+   ],
+   "pixel_jaccard": 0.0,
+   "reasons": [
+    "unique screen-state counts diverge: freej2me=6 vs midp-rt=1 (tolerance ±3)",
+    "state-change counts diverge: freej2me=5 vs midp-rt=0 (tolerance ±3)"
+   ],
+   "report_md": "# cross-engine report (A↔B link)\n\n- jar: `/g.jar`\n- engines: `freej2me` vs `midp-rt`\n\n## VERDICT: DIVERGE (soft, structural — pixels are NOT compared across engines)\n\n- ✗ unique screen-state counts diverge: freej2me=6 vs midp-rt=1 (tolerance ±3)\n- ✗ state-change counts diverge: freej2me=5 vs midp-rt=0 (tolerance ±3)\n- ℹ pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00\n- ℹ state-change frames freej2me: [1, 2, 3, 4, 5]; midp-rt: -\n\n## Runs\n\n| engine | frames | unique states | state changes | non-blank | RMS stores | exceptions |\n|---|---|---|---|---|---|---|\n| freej2me | 6 | 6 | 5 | yes | - | - |\n| midp-rt | 6 | 1 | 0 | yes | - | - |\n",
+   "states": [
+    6,
+    1
+   ],
+   "transitions": [
+    [
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    []
+   ]
+  },
+  {
+   "agree": false,
+   "name": "blank",
+   "notes": [
+    "pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00",
+    "state-change frames freej2me: [1, 2, 3, 4, 5]; midp-rt: -"
+   ],
+   "pixel_jaccard": 0.0,
+   "reasons": [
+    "midp-rt rendered ONLY blank frames (the other engine did not)",
+    "unique screen-state counts diverge: freej2me=6 vs midp-rt=1 (tolerance ±3)",
+    "state-change counts diverge: freej2me=5 vs midp-rt=0 (tolerance ±3)"
+   ],
+   "report_md": "# cross-engine report (A↔B link)\n\n- jar: `/g.jar`\n- engines: `freej2me` vs `midp-rt`\n\n## VERDICT: DIVERGE (soft, structural — pixels are NOT compared across engines)\n\n- ✗ midp-rt rendered ONLY blank frames (the other engine did not)\n- ✗ unique screen-state counts diverge: freej2me=6 vs midp-rt=1 (tolerance ±3)\n- ✗ state-change counts diverge: freej2me=5 vs midp-rt=0 (tolerance ±3)\n- ℹ pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00\n- ℹ state-change frames freej2me: [1, 2, 3, 4, 5]; midp-rt: -\n\n## Runs\n\n| engine | frames | unique states | state changes | non-blank | RMS stores | exceptions |\n|---|---|---|---|---|---|---|\n| freej2me | 6 | 6 | 5 | yes | - | - |\n| midp-rt | 6 | 1 | 0 | NO | - | - |\n",
+   "states": [
+    6,
+    1
+   ],
+   "transitions": [
+    [
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    []
+   ]
+  },
+  {
+   "agree": false,
+   "name": "run-error",
+   "notes": [
+    "pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00",
+    "state-change frames freej2me: [1, 2, 3, 4, 5]; midp-rt: -"
+   ],
+   "pixel_jaccard": 0.0,
+   "reasons": [
+    "run midp-rt failed: jvm died"
+   ],
+   "report_md": "# cross-engine report (A↔B link)\n\n- jar: `/g.jar`\n- engines: `freej2me` vs `midp-rt`\n\n## VERDICT: DIVERGE (soft, structural — pixels are NOT compared across engines)\n\n- ✗ run midp-rt failed: jvm died\n- ℹ pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00\n- ℹ state-change frames freej2me: [1, 2, 3, 4, 5]; midp-rt: -\n\n## Runs\n\n| engine | frames | unique states | state changes | non-blank | RMS stores | exceptions |\n|---|---|---|---|---|---|---|\n| freej2me | 6 | 6 | 5 | yes | - | - |\n| midp-rt | 0 | 0 | 0 | yes | - | - |\n",
+   "states": [
+    6,
+    0
+   ],
+   "transitions": [
+    [
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    []
+   ]
+  },
+  {
+   "agree": false,
+   "name": "one-sided-exc",
+   "notes": [
+    "pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00",
+    "state-change frames freej2me: -; midp-rt: -"
+   ],
+   "pixel_jaccard": 0.0,
+   "reasons": [
+    "exceptions logged by only one engine: freej2me: ['NullPointerException'], midp-rt: -"
+   ],
+   "report_md": "# cross-engine report (A↔B link)\n\n- jar: `/g.jar`\n- engines: `freej2me` vs `midp-rt`\n\n## VERDICT: DIVERGE (soft, structural — pixels are NOT compared across engines)\n\n- ✗ exceptions logged by only one engine: freej2me: ['NullPointerException'], midp-rt: -\n- ℹ pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00\n- ℹ state-change frames freej2me: -; midp-rt: -\n\n## Runs\n\n| engine | frames | unique states | state changes | non-blank | RMS stores | exceptions |\n|---|---|---|---|---|---|---|\n| freej2me | 1 | 1 | 0 | yes | - | NullPointerException |\n| midp-rt | 1 | 1 | 0 | yes | - | - |\n",
+   "states": [
+    1,
+    1
+   ],
+   "transitions": [
+    [],
+    []
+   ]
+  },
+  {
+   "agree": true,
+   "name": "mangled-names",
+   "notes": [
+    "both engines wrote RMS (store names per engine, NOT comparable across): freej2me: ['0a9e551506c3lzdgvt']; midp-rt: ['system']",
+    "pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00",
+    "state-change frames freej2me: -; midp-rt: -"
+   ],
+   "pixel_jaccard": 0.0,
+   "reasons": [],
+   "report_md": "# cross-engine report (A↔B link)\n\n- jar: `/g.jar`\n- engines: `freej2me` vs `midp-rt`\n\n## VERDICT: AGREE (soft, structural — pixels are NOT compared across engines)\n\n- ℹ both engines wrote RMS (store names per engine, NOT comparable across): freej2me: ['0a9e551506c3lzdgvt']; midp-rt: ['system']\n- ℹ pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00\n- ℹ state-change frames freej2me: -; midp-rt: -\n\n## Runs\n\n| engine | frames | unique states | state changes | non-blank | RMS stores | exceptions |\n|---|---|---|---|---|---|---|\n| freej2me | 1 | 1 | 0 | yes | 0a9e551506c3lzdgvt | - |\n| midp-rt | 1 | 1 | 0 | yes | system | - |\n",
+   "states": [
+    1,
+    1
+   ],
+   "transitions": [
+    [],
+    []
+   ]
+  },
+  {
+   "agree": false,
+   "name": "rms-activity",
+   "notes": [
+    "pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00",
+    "state-change frames freej2me: -; midp-rt: -"
+   ],
+   "pixel_jaccard": 0.0,
+   "reasons": [
+    "RMS activity differs: freej2me wrote record stores, midp-rt wrote none"
+   ],
+   "report_md": "# cross-engine report (A↔B link)\n\n- jar: `/g.jar`\n- engines: `freej2me` vs `midp-rt`\n\n## VERDICT: DIVERGE (soft, structural — pixels are NOT compared across engines)\n\n- ✗ RMS activity differs: freej2me wrote record stores, midp-rt wrote none\n- ℹ pixel-level state Jaccard (info ONLY — different skins/fonts make ~0.00 expected): 0.00\n- ℹ state-change frames freej2me: -; midp-rt: -\n\n## Runs\n\n| engine | frames | unique states | state changes | non-blank | RMS stores | exceptions |\n|---|---|---|---|---|---|---|\n| freej2me | 1 | 1 | 0 | yes | 0a9e551506c3lzdgvt | - |\n| midp-rt | 1 | 1 | 0 | yes | - | - |\n",
+   "states": [
+    1,
+    1
+   ],
+   "transitions": [
+    [],
+    []
+   ]
+  }
+ ],
+ "diff_rms": {
+  "added": [
+   "sub/c.rs"
+  ],
+  "changed": [
+   "a.rms"
+  ],
+  "removed": [
+   "game.conf"
+  ]
+ },
+ "first_seen": [
+  {
+   "a": 0,
+   "b": 2
+  },
+  {
+   "a": 5,
+   "b": 6,
+   "m": 3,
+   "s": 0
+  },
+  {
+   "x": 0,
+   "y": 1
+  },
+  {
+   "m": 1,
+   "s": 0
+  },
+  {
+   "g": 2,
+   "m": 1,
+   "s": 0
+  },
+  {},
+  {
+   "s": 0
+  },
+  {
+   "a1": 0,
+   "a2": 2,
+   "a3": 3
+  },
+  {
+   "m": 1,
+   "s": 0
+  }
+ ],
+ "fold_manifest": [
+  {
+   "MIDlet-1": "Game, /i.png, com.x.Main",
+   "MIDlet-Name": "G",
+   "Manifest-Version": "1.0"
+  },
+  {
+   "MIDlet-1": "Game, /i.png"
+  },
+  {
+   "MIDlet-1": "Game, /i.png, com.y.Main",
+   "MIDlet-2": "X, , z.W"
+  },
+  {
+   "Key": "spaced"
+  }
+ ],
+ "input_bytes": [
+  [
+   3,
+   0,
+   0,
+   0,
+   18,
+   2,
+   0,
+   0,
+   0,
+   18
+  ],
+  [
+   3,
+   0,
+   0,
+   0,
+   0
+  ],
+  [
+   2,
+   0,
+   0,
+   0,
+   7
+  ]
+ ],
+ "libretro_keys": {
+  "CLR": 19,
+  "DOWN": 1,
+  "FIRE": 7,
+  "LEFT": 2,
+  "NUM0": 6,
+  "NUM1": 10,
+  "NUM2": 14,
+  "NUM3": 11,
+  "NUM4": 15,
+  "NUM5": 18,
+  "NUM6": 16,
+  "NUM7": 5,
+  "NUM8": 17,
+  "NUM9": 4,
+  "POUND": 13,
+  "RIGHT": 3,
+  "SOFT3": 7,
+  "SOFT_LEFT": 9,
+  "SOFT_RIGHT": 8,
+  "STAR": 12,
+  "UP": 0
+ },
+ "midlet1_class": [
+  "com.x.Main",
+  null,
+  "com.y.Main",
+  null
+ ],
+ "normsig": [
+  "int mix(int)",
+  "void a(java.lang.String)",
+  "java.lang.String b(int, int)",
+  "Fixture()"
+ ],
+ "normsig_nomap": [
+  "int mix(int)",
+  "void a(java.lang.String)",
+  "java.lang.String b_af64044c(int, int)",
+  "Fixture()"
+ ],
+ "parse_javap_orig": {
+  "Fixture()": [
+   "('Method', '\"<init>\"', '()V')"
+  ],
+  "int mix(int)": [
+   "('Field', 'a', 'I')",
+   "('InterfaceMethod', 'go', '(I)I')",
+   "('Method', '\"<init>\"', '()V')",
+   "('NewArray', 'char')",
+   "('NewArray', 'int')",
+   "('Type', 'Fixture$Impl')"
+  ],
+  "java.lang.Object cast(java.lang.Object)": [
+   "('Field', 'a', 'I')",
+   "('InterfaceMethod', 'add', '(Ljava/lang/Object;)Z')",
+   "('InterfaceMethod', 'get', '(I)Ljava/lang/Object;')",
+   "('Method', '\"<init>\"', '()V')",
+   "('Method', 'valueOf', '(I)Ljava/lang/String;')",
+   "('Type', 'ArrayList')"
+  ],
+  "java.lang.String concat(java.lang.String)": [
+   "('Field', 'a', 'I')",
+   "('Field', 'b', 'Ljava/lang/String;')",
+   "('Method', '\"<init>\"', '()V')",
+   "('Method', 'append', '(I)Ljava/lang/StringBuilder;')",
+   "('Method', 'append', '(Ljava/lang/String;)Ljava/lang/StringBuilder;')",
+   "('Method', 'toString', '()Ljava/lang/String;')",
+   "('Type', 'StringBuilder')"
+  ]
+ },
+ "parse_javap_orig_nomap": {
+  "Fixture()": [
+   "('Method', '\"<init>\"', '()V')"
+  ],
+  "int mix(int)": [
+   "('Field', 'a_af64174c', 'I')",
+   "('InterfaceMethod', 'go', '(I)I')",
+   "('Method', '\"<init>\"', '()V')",
+   "('NewArray', 'char')",
+   "('NewArray', 'int')",
+   "('Type', 'Fixture$Impl')"
+  ],
+  "java.lang.Object cast(java.lang.Object)": [
+   "('Field', 'a_af64174c', 'I')",
+   "('InterfaceMethod', 'add', '(Ljava/lang/Object;)Z')",
+   "('InterfaceMethod', 'get', '(I)Ljava/lang/Object;')",
+   "('Method', '\"<init>\"', '()V')",
+   "('Method', 'valueOf', '(I)Ljava/lang/String;')",
+   "('Type', 'ArrayList')"
+  ],
+  "java.lang.String concat(java.lang.String)": [
+   "('Field', 'a_af64174c', 'I')",
+   "('Field', 'b_af64044c', 'Ljava/lang/String;')",
+   "('Method', '\"<init>\"', '()V')",
+   "('Method', 'append', '(I)Ljava/lang/StringBuilder;')",
+   "('Method', 'append', '(Ljava/lang/String;)Ljava/lang/StringBuilder;')",
+   "('Method', 'toString', '()Ljava/lang/String;')",
+   "('Type', 'StringBuilder')"
+  ]
+ },
+ "parse_javap_recompiled": {
+  "Fixture()": [
+   "('Method', '\"<init>\"', '()V')"
+  ],
+  "int mix(int)": [
+   "('Field', 'a', 'I')",
+   "('Method', '\"<init>\"', '()V')",
+   "('Method', 'go', '(I)I')",
+   "('NewArray', 'int')",
+   "('Type', 'Fixture$Impl')"
+  ],
+  "java.lang.String concat(java.lang.String)": [
+   "('Field', 'a', 'I')",
+   "('Field', 'b', 'Ljava/lang/String;')",
+   "('Method', '\"<init>\"', '()V')",
+   "('Method', 'append', '(I)Ljava/lang/StringBuilder;')",
+   "('Method', 'append', '(Ljava/lang/String;)Ljava/lang/StringBuilder;')",
+   "('Method', 'toString', '()Ljava/lang/String;')",
+   "('Type', 'StringBuilder')"
+  ]
+ },
+ "path_bytes": [
+  [
+   11,
+   0,
+   0,
+   0,
+   9,
+   47,
+   116,
+   109,
+   112,
+   47,
+   114,
+   109,
+   115,
+   47
+  ],
+  [
+   10,
+   0,
+   0,
+   0,
+   17,
+   47,
+   116,
+   109,
+   112,
+   47,
+   209,
+   130,
+   208,
+   181,
+   209,
+   129,
+   209,
+   130,
+   46,
+   106,
+   97,
+   114
+  ]
+ ],
+ "reverse_map": {
+  "a_af64174c": "a",
+  "b_af64044c": "b",
+  "mix_af6417ff": "mix"
+ },
+ "rms_store_names": [
+  "plain",
+  "store one",
+  "тест"
+ ],
+ "runtime_classpath": [
+  "<TMP>/engines/midp-rt.jar",
+  "<TMP>/engines/asm-9.7.jar"
+ ],
+ "scan_stderr": [
+  "BarException",
+  "IOException",
+  "NullPointerException",
+  "SomeError"
+ ],
+ "seq_dict": [
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 1.0,
+   "max_shift_frames": 0,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 0.875,
+   "jaccard": 1.0,
+   "max_shift_frames": 1,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 0.0,
+   "jaccard": 0.0,
+   "max_shift_frames": 0,
+   "only_a": [
+    "x",
+    "y"
+   ],
+   "only_b": [
+    "p",
+    "q"
+   ],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 0.6667,
+   "max_shift_frames": 0,
+   "only_a": [],
+   "only_b": [
+    "crash"
+   ],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 0.3333,
+   "jaccard": 1.0,
+   "max_shift_frames": 1,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": false,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 1.0,
+   "max_shift_frames": 0,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  },
+  {
+   "frame_match_rate": 1.0,
+   "jaccard": 0.0,
+   "max_shift_frames": 0,
+   "only_a": [
+    "s"
+   ],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 0.0,
+   "jaccard": 0.0,
+   "max_shift_frames": 0,
+   "only_a": [
+    "a1",
+    "a2",
+    "a3"
+   ],
+   "only_b": [
+    "b1",
+    "b2",
+    "b3"
+   ],
+   "order_ok": true,
+   "sets_equal": false
+  },
+  {
+   "frame_match_rate": 0.5,
+   "jaccard": 1.0,
+   "max_shift_frames": 5,
+   "only_a": [],
+   "only_b": [],
+   "order_ok": true,
+   "sets_equal": true
+  }
+ ],
+ "snapshot_rms_after": {
+  "a.rms": "8c55ff95a660f37cb05e644e7691e6c66593f453cb2cbaa4d64aa59b40ae8032",
+  "sub/b.rs": "dcdb704109a454784b81229d2b05f368692e758bfa33cb61d04c1b93791b0273",
+  "sub/c.rs": "4c5f91d8424f9529acf7118d133a93d2a6cab19141c35c3064837e6dd57b99a3"
+ },
+ "snapshot_rms_before": {
+  "a.rms": "cb1ad2119d8fafb69566510ee712661f9f14b83385006ef92aec47f523a38358",
+  "game.conf": "0c326c4f02797b088fc566e64fbfe2162390f52f2fec1483ec3a413a7f11c910",
+  "sub/b.rs": "dcdb704109a454784b81229d2b05f368692e758bfa33cb61d04c1b93791b0273"
+ },
+ "transition_frames": [
+  [
+   2,
+   5
+  ],
+  [
+   3,
+   5,
+   6,
+   7
+  ],
+  [
+   1
+  ],
+  [
+   1
+  ],
+  [
+   1,
+   2
+  ],
+  [],
+  [],
+  [
+   2,
+   3
+  ],
+  [
+   1
+  ]
+ ],
+ "unique_in_order": [
+  [
+   "a",
+   "b"
+  ],
+  [
+   "s",
+   "m",
+   "a",
+   "b"
+  ],
+  [
+   "x",
+   "y"
+  ],
+  [
+   "s",
+   "m"
+  ],
+  [
+   "s",
+   "m",
+   "g"
+  ],
+  [],
+  [
+   "s"
+  ],
+  [
+   "a1",
+   "a2",
+   "a3"
+  ],
+  [
+   "s",
+   "m"
+  ]
+ ],
+ "verdicts": [
+  {
+   "baseline": {
+    "frame_match_rate": 0.5,
+    "jaccard": 0.6667,
+    "max_shift_frames": 1,
+    "only_a": [
+     "g"
+    ],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": false
+   },
+   "cross": {
+    "frame_match_rate": 0.75,
+    "jaccard": 1.0,
+    "max_shift_frames": 1,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "noise-ok",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 75%, baseline 50%"
+   ],
+   "passed": true,
+   "reasons": [],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 0.5,
+     "jaccard": 0.6667,
+     "max_shift_frames": 1,
+     "only_a": [
+      "g"
+     ],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": false
+    },
+    "cross": {
+     "frame_match_rate": 0.75,
+     "jaccard": 1.0,
+     "max_shift_frames": 1,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 75%, baseline 50%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": true,
+    "reasons": [],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 4,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 3
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 4,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 4,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 3
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: PASS\n\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 75%, baseline 50%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 4 | 3 | yes | 1 | - |\n| orig_b | 4 | 2 | yes | 1 | - |\n| rebuilt | 4 | 3 | yes | 1 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 0.67 (only-a: 1, only-b: 0)\n- first-appearance order: same\n- max timing shift: 1 frame(s)\n- frame-by-frame match (info): 50%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 1 frame(s)\n- frame-by-frame match (info): 75%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 0.0,
+    "jaccard": 0.0,
+    "max_shift_frames": 0,
+    "only_a": [
+     "m",
+     "s"
+    ],
+    "only_b": [
+     "X",
+     "Y"
+    ],
+    "order_ok": true,
+    "sets_equal": false
+   },
+   "name": "states-differ",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%, baseline 100%"
+   ],
+   "passed": false,
+   "reasons": [
+    "state-set similarity 0.00 below noise floor 0.85 (baseline 1.00 - margin 0.15)"
+   ],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 0.0,
+     "jaccard": 0.0,
+     "max_shift_frames": 0,
+     "only_a": [
+      "m",
+      "s"
+     ],
+     "only_b": [
+      "X",
+      "Y"
+     ],
+     "order_ok": true,
+     "sets_equal": false
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%, baseline 100%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "state-set similarity 0.00 below noise floor 0.85 (baseline 1.00 - margin 0.15)"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 2,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 2,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 2,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ state-set similarity 0.00 below noise floor 0.85 (baseline 1.00 - margin 0.15)\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%, baseline 100%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 2 | 2 | yes | 0 | - |\n| orig_b | 2 | 2 | yes | 0 | - |\n| rebuilt | 2 | 2 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 0.00 (only-a: 2, only-b: 2)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 0%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "exc-noise",
+   "notes": [
+    "original itself logs exceptions (ignored as baseline): IOException",
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+   ],
+   "passed": false,
+   "reasons": [
+    "new exceptions in rebuilt stderr: NullPointerException"
+   ],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "original itself logs exceptions (ignored as baseline): IOException",
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "new exceptions in rebuilt stderr: NullPointerException"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [
+       "IOException"
+      ],
+      "frames": 1,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [
+       "IOException"
+      ],
+      "frames": 1,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [
+       "IOException",
+       "NullPointerException"
+      ],
+      "frames": 1,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ new exceptions in rebuilt stderr: NullPointerException\n- ℹ original itself logs exceptions (ignored as baseline): IOException\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 1 | 1 | yes | 0 | IOException |\n| orig_b | 1 | 1 | yes | 0 | IOException |\n| rebuilt | 1 | 1 | yes | 0 | IOException, NullPointerException |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 0.0,
+    "jaccard": 0.0,
+    "max_shift_frames": 0,
+    "only_a": [
+     "s"
+    ],
+    "only_b": [
+     "0"
+    ],
+    "order_ok": true,
+    "sets_equal": false
+   },
+   "name": "blank",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%, baseline 100%"
+   ],
+   "passed": false,
+   "reasons": [
+    "rebuilt rendered ONLY blank frames (original did not)",
+    "state-set similarity 0.00 below noise floor 0.85 (baseline 1.00 - margin 0.15)"
+   ],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 0.0,
+     "jaccard": 0.0,
+     "max_shift_frames": 0,
+     "only_a": [
+      "s"
+     ],
+     "only_b": [
+      "0"
+     ],
+     "order_ok": true,
+     "sets_equal": false
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%, baseline 100%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "rebuilt rendered ONLY blank frames (original did not)",
+     "state-set similarity 0.00 below noise floor 0.85 (baseline 1.00 - margin 0.15)"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "rebuilt",
+      "nonblank": false,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ rebuilt rendered ONLY blank frames (original did not)\n- ✗ state-set similarity 0.00 below noise floor 0.85 (baseline 1.00 - margin 0.15)\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%, baseline 100%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 1 | 1 | yes | 0 | - |\n| orig_b | 1 | 1 | yes | 0 | - |\n| rebuilt | 1 | 1 | NO | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 0.00 (only-a: 1, only-b: 1)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 0%\n"
+  },
+  {
+   "baseline": null,
+   "cross": {
+    "frame_match_rate": 0.0,
+    "jaccard": 0.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": false,
+    "sets_equal": true
+   },
+   "name": "rebuilt-error",
+   "notes": [],
+   "passed": false,
+   "reasons": [
+    "rebuilt run failed: emulator died"
+   ],
+   "report_json": {
+    "baseline": null,
+    "cross": {
+     "frame_match_rate": 0.0,
+     "jaccard": 0.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": false,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "rebuilt run failed: emulator died"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     },
+     {
+      "error": "emulator died",
+      "exceptions": [],
+      "frames": 0,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 0
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ rebuilt run failed: emulator died\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 1 | 1 | yes | 0 | - |\n| orig_b | 1 | 1 | yes | 0 | - |\n| rebuilt | 0 | 0 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n(skipped)\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 0.00 (sets EQUAL)\n- first-appearance order: DIFFERS\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 0%\n"
+  },
+  {
+   "baseline": null,
+   "cross": {
+    "frame_match_rate": 0.0,
+    "jaccard": 0.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": false,
+    "sets_equal": true
+   },
+   "name": "orig-error",
+   "notes": [],
+   "passed": false,
+   "reasons": [
+    "original run failed: boom"
+   ],
+   "report_json": {
+    "baseline": null,
+    "cross": {
+     "frame_match_rate": 0.0,
+     "jaccard": 0.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": false,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "original run failed: boom"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": "boom",
+      "exceptions": [],
+      "frames": 0,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 0
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ original run failed: boom\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 0 | 0 | yes | 0 | - |\n| orig_b | 1 | 1 | yes | 0 | - |\n| rebuilt | 1 | 1 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n(skipped)\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 0.00 (sets EQUAL)\n- first-appearance order: DIFFERS\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 0%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 0.5,
+    "jaccard": 1.0,
+    "max_shift_frames": 5,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 0.4,
+    "jaccard": 1.0,
+    "max_shift_frames": 6,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "shift-widened",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 40%, baseline 50%"
+   ],
+   "passed": true,
+   "reasons": [],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 0.5,
+     "jaccard": 1.0,
+     "max_shift_frames": 5,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 0.4,
+     "jaccard": 1.0,
+     "max_shift_frames": 6,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 40%, baseline 50%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": true,
+    "reasons": [],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 10,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 10,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 10,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: PASS\n\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 40%, baseline 50%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 10 | 2 | yes | 0 | - |\n| orig_b | 10 | 2 | yes | 0 | - |\n| rebuilt | 10 | 2 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 5 frame(s)\n- frame-by-frame match (info): 50%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 6 frame(s)\n- frame-by-frame match (info): 40%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 0.5,
+    "jaccard": 1.0,
+    "max_shift_frames": 5,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 0.2,
+    "jaccard": 1.0,
+    "max_shift_frames": 8,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "shift-too-big",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 20%, baseline 50%"
+   ],
+   "passed": false,
+   "reasons": [
+    "state timing shifted by 8 frames (tolerance ±6)"
+   ],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 0.5,
+     "jaccard": 1.0,
+     "max_shift_frames": 5,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 0.2,
+     "jaccard": 1.0,
+     "max_shift_frames": 8,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 20%, baseline 50%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "state timing shifted by 8 frames (tolerance ±6)"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 10,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 10,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 10,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ state timing shifted by 8 frames (tolerance ±6)\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 20%, baseline 50%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 10 | 2 | yes | 0 | - |\n| orig_b | 10 | 2 | yes | 0 | - |\n| rebuilt | 10 | 2 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 5 frame(s)\n- frame-by-frame match (info): 50%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 8 frame(s)\n- frame-by-frame match (info): 20%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "rms-content-noise",
+   "notes": [
+    "RMS contents differ byte-wise (within noise — original runs differ too)",
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+   ],
+   "passed": true,
+   "reasons": [],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "RMS contents differ byte-wise (within noise — original runs differ too)",
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": true,
+    "reasons": [],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: PASS\n\n- ℹ RMS contents differ byte-wise (within noise — original runs differ too)\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 1 | 1 | yes | 1 | - |\n| orig_b | 1 | 1 | yes | 1 | - |\n| rebuilt | 1 | 1 | yes | 1 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "rms-paths-differ",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+   ],
+   "passed": false,
+   "reasons": [
+    "RMS stores differ (only-orig: ['rms/x.rms'], only-rebuilt: ['rms/OTHER.rms'])"
+   ],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "RMS stores differ (only-orig: ['rms/x.rms'], only-rebuilt: ['rms/OTHER.rms'])"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/OTHER.rms"
+      ],
+      "unique_states": 1
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ RMS stores differ (only-orig: ['rms/x.rms'], only-rebuilt: ['rms/OTHER.rms'])\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 1 | 1 | yes | 1 | - |\n| orig_b | 1 | 1 | yes | 1 | - |\n| rebuilt | 1 | 1 | yes | 1 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "rms-content-strict",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+   ],
+   "passed": false,
+   "reasons": [
+    "RMS contents differ byte-wise while two original runs were byte-identical"
+   ],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "RMS contents differ byte-wise while two original runs were byte-identical"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [
+       "rms/x.rms"
+      ],
+      "unique_states": 1
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ RMS contents differ byte-wise while two original runs were byte-identical\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%, baseline 100%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 1 | 1 | yes | 1 | - |\n| orig_b | 1 | 1 | yes | 1 | - |\n| rebuilt | 1 | 1 | yes | 1 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n"
+  },
+  {
+   "baseline": null,
+   "cross": {
+    "frame_match_rate": 1.0,
+    "jaccard": 1.0,
+    "max_shift_frames": 0,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": true,
+    "sets_equal": true
+   },
+   "name": "no-baseline-pass",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%"
+   ],
+   "passed": true,
+   "reasons": [],
+   "report_json": {
+    "baseline": null,
+    "cross": {
+     "frame_match_rate": 1.0,
+     "jaccard": 1.0,
+     "max_shift_frames": 0,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": true,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": true,
+    "reasons": [],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 2,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 2,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: PASS\n\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 100%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 2 | 2 | yes | 0 | - |\n| rebuilt | 2 | 2 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n(skipped)\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 100%\n"
+  },
+  {
+   "baseline": null,
+   "cross": {
+    "frame_match_rate": 0.0,
+    "jaccard": 0.0,
+    "max_shift_frames": 0,
+    "only_a": [
+     "m",
+     "s"
+    ],
+    "only_b": [
+     "X"
+    ],
+    "order_ok": true,
+    "sets_equal": false
+   },
+   "name": "no-baseline-fail",
+   "notes": [
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%"
+   ],
+   "passed": false,
+   "reasons": [
+    "state-set similarity 0.00 below threshold 0.85"
+   ],
+   "report_json": {
+    "baseline": null,
+    "cross": {
+     "frame_match_rate": 0.0,
+     "jaccard": 0.0,
+     "max_shift_frames": 0,
+     "only_a": [
+      "m",
+      "s"
+     ],
+     "only_b": [
+      "X"
+     ],
+     "order_ok": true,
+     "sets_equal": false
+    },
+    "engine": "freej2me",
+    "notes": [
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": false,
+    "reasons": [
+     "state-set similarity 0.00 below threshold 0.85"
+    ],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 2,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 2
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 1,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 1
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: FAIL\n\n- ✗ state-set similarity 0.00 below threshold 0.85\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 0%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 2 | 2 | yes | 0 | - |\n| rebuilt | 1 | 1 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n(skipped)\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 0.00 (only-a: 2, only-b: 1)\n- first-appearance order: same\n- max timing shift: 0 frame(s)\n- frame-by-frame match (info): 0%\n"
+  },
+  {
+   "baseline": {
+    "frame_match_rate": 0.3333,
+    "jaccard": 1.0,
+    "max_shift_frames": 1,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": false,
+    "sets_equal": true
+   },
+   "cross": {
+    "frame_match_rate": 0.3333,
+    "jaccard": 1.0,
+    "max_shift_frames": 1,
+    "only_a": [],
+    "only_b": [],
+    "order_ok": false,
+    "sets_equal": true
+   },
+   "name": "order-unstable-baseline",
+   "notes": [
+    "state order differs, but the noise baseline already shows order instability — not held against rebuilt",
+    "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 33%, baseline 33%"
+   ],
+   "passed": true,
+   "reasons": [],
+   "report_json": {
+    "baseline": {
+     "frame_match_rate": 0.3333,
+     "jaccard": 1.0,
+     "max_shift_frames": 1,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": false,
+     "sets_equal": true
+    },
+    "cross": {
+     "frame_match_rate": 0.3333,
+     "jaccard": 1.0,
+     "max_shift_frames": 1,
+     "only_a": [],
+     "only_b": [],
+     "order_ok": false,
+     "sets_equal": true
+    },
+    "engine": "freej2me",
+    "notes": [
+     "state order differs, but the noise baseline already shows order instability — not held against rebuilt",
+     "frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 33%, baseline 33%"
+    ],
+    "orig_jar": "/o.jar",
+    "passed": true,
+    "reasons": [],
+    "rebuilt_jar": "/r.jar",
+    "runs": [
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 3,
+      "label": "orig_a",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 3
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 3,
+      "label": "orig_b",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 3
+     },
+     {
+      "error": null,
+      "exceptions": [],
+      "frames": 3,
+      "label": "rebuilt",
+      "nonblank": true,
+      "out_dir": "/none",
+      "rms_files": [],
+      "unique_states": 3
+     }
+    ]
+   },
+   "report_md": "# difftest report\n\n- original: `/o.jar`\n- rebuilt:  `/r.jar`\n- engine:   `freej2me`\n\n## VERDICT: PASS\n\n- ℹ state order differs, but the noise baseline already shows order instability — not held against rebuilt\n- ℹ frame-by-frame index match (timing-sensitive, info only): orig-vs-rebuilt 33%, baseline 33%\n\n## Runs\n\n| run | frames | unique states | non-blank | RMS files | exceptions |\n|---|---|---|---|---|---|\n| orig_a | 3 | 3 | yes | 0 | - |\n| orig_b | 3 | 3 | yes | 0 | - |\n| rebuilt | 3 | 3 | yes | 0 | - |\n\n## Noise baseline (orig vs orig)\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: DIFFERS\n- max timing shift: 1 frame(s)\n- frame-by-frame match (info): 33%\n\n## Orig vs rebuilt\n\n- state-set similarity (Jaccard): 1.00 (sets EQUAL)\n- first-appearance order: DIFFERS\n- max timing shift: 1 frame(s)\n- frame-by-frame match (info): 33%\n"
+  }
+ ]
+}
