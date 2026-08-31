@@ -291,6 +291,16 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
     if only.is_none() || in_only("asm") {
         result.push(("asm".to_string(), setup_asm(root)));
     }
+    // Clean-room MIDP/CLDC API stub (stage E8).  Generated (not vendored) and always
+    // put on the renamer's resolver classpath, so framework callbacks (Canvas.paint,
+    // MIDlet.startApp, …) lock PRECISELY via reflection.  It also builds itself on
+    // first use, so this step is a warm-up that reports whether javac managed it;
+    // without javac the renamer keeps using the MIDP_CALLBACKS denylist.  It lives
+    // under ~/.arlecchino (next to engines/), not in the engines root, so it is
+    // shared regardless of which engine config is used.
+    if only.is_none() || in_only("midp-stub") {
+        result.push(("midp-stub".to_string(), crate::midp_stub::build_stub(None, None)));
+    }
     // Рантайм MIDP (LGPL-форк MicroEmulator) — ОТДЕЛЬНЫЙ репозиторий/артефакт,
     // сюда он никогда не качается и не вкладывается. Этот шаг только НАХОДИТ
     // midp-rt.jar (настраиваемо: $ARLECCHINO_MIDP_RT / корень движков / чекаут
