@@ -261,12 +261,18 @@ pub fn has_member_collisions(jar: &Path) -> bool {
 }
 
 /// Invoke the ASM helper: rewrite `jar` -> `out_jar`, writing `mapping`.
+///
+/// `flatten` (OPT-IN): pass the helper's 5th `flatten` argv so it ALSO moves every
+/// in-jar TYPE into the default (unnamed) package — letting a named-package class name
+/// what used to be a default-package type.  Off by default; without it the produced jar
+/// is byte-identical to the previous behaviour.
 pub fn run_renamer(
     jar: &Path,
     out_jar: &Path,
     mapping: &Path,
     root: Option<&Path>,
     framework_cp: Option<&str>,
+    flatten: bool,
 ) -> Option<PathBuf> {
     let jars = asm_jars(root);
     if jars.is_empty() || !helper_compiled(root) {
@@ -283,7 +289,7 @@ pub fn run_renamer(
     if let Some(p) = out_jar.parent() {
         let _ = std::fs::create_dir_all(p);
     }
-    let argv = vec![
+    let mut argv = vec![
         java,
         "-cp".into(),
         cp,
@@ -293,6 +299,9 @@ pub fn run_renamer(
         mapping.to_string_lossy().into_owned(),
         framework_cp.unwrap_or("").to_string(),
     ];
+    if flatten {
+        argv.push("flatten".into());
+    }
     let r = util::run_capture(&argv, Some(Duration::from_secs(600)));
     if let Some(e) = r.spawn_err {
         println!("   member-rename: launch error ({e}); using original jar.");
@@ -308,12 +317,18 @@ pub fn run_renamer(
 }
 
 /// Decide-and-run the rename pass.  Returns (jar_to_use, mapping_path_or_None).
+///
+/// `flatten` (OPT-IN, `--flatten-packages`): also move every in-jar type into the
+/// default package so named-package classes can name default-package types.  It rides
+/// on the SAME ASM pass, so when `mode` decides not to run the renamer at all (off, or
+/// auto with no collisions and no flatten) it has no effect.
 pub fn maybe_rename(
     jar: &Path,
     workdir: &Path,
     root: Option<&Path>,
     mode: &str,
     framework_cp: Option<&str>,
+    flatten: bool,
 ) -> (PathBuf, Option<PathBuf>) {
     if mode == "off" {
         println!("   member-rename: disabled (--no-rename-members).");
@@ -324,7 +339,9 @@ pub fn maybe_rename(
     let avail = available(root);
 
     if mode == "auto" {
-        if !collisions {
+        // --flatten-packages needs the ASM pass to run even on a collision-free jar
+        // (the cross-package fix is independent of member collisions).
+        if !collisions && !flatten {
             println!(
                 "   member-rename: no source-illegal member collisions detected — \
                  skipping (not needed)."
@@ -339,10 +356,17 @@ pub fn maybe_rename(
             );
             return (jar.to_path_buf(), None);
         }
-        println!(
-            "   member-rename: source-illegal member collisions detected; running ASM \
-             bytecode renamer first."
-        );
+        if collisions {
+            println!(
+                "   member-rename: source-illegal member collisions detected; running ASM \
+                 bytecode renamer first."
+            );
+        } else {
+            println!(
+                "   member-rename: no member collisions, but running ASM pass for \
+                 --flatten-packages."
+            );
+        }
     } else if mode == "on" {
         if !avail {
             println!(
@@ -356,10 +380,17 @@ pub fn maybe_rename(
         }
     }
 
+    if flatten {
+        println!(
+            "   member-rename: --flatten-packages ON — all types moved to the default \
+             package (cross-package references made nameable)."
+        );
+    }
+
     let stem = jar.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let out_jar = workdir.join(format!("{stem}.renamed.jar"));
     let mapping = workdir.join(format!("{stem}.rename-map.txt"));
-    match run_renamer(jar, &out_jar, &mapping, root, framework_cp) {
+    match run_renamer(jar, &out_jar, &mapping, root, framework_cp, flatten) {
         None => (jar.to_path_buf(), None),
         Some(res) => (res, Some(mapping)),
     }

@@ -153,6 +153,10 @@ struct DecompileArgs {
     /// disable the bytecode member-renamer
     #[arg(long = "no-rename-members")]
     no_rename_members: bool,
+    /// move EVERY in-jar type into the default (unnamed) package during the ASM rename
+    /// pass, so a named-package class can reference a default-package type
+    #[arg(long = "flatten-packages")]
+    flatten_packages: bool,
     /// experimental per-method merge
     #[arg(long = "per-method")]
     per_method: bool,
@@ -246,6 +250,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         Some(&root),
         rename_mode,
         classpath.as_deref(),
+        a.flatten_packages,
     );
     let renamed = jar != orig_jar;
     if renamed {
@@ -488,6 +493,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         &orig_jar,
         renamed,
         rename_mode,
+        a.flatten_packages,
         rename_map.as_deref(),
         &ranking,
         &best_base,
@@ -536,6 +542,7 @@ fn build_report_json(
     orig_jar: &Path,
     renamed: bool,
     rename_mode: &str,
+    flatten_packages: bool,
     rename_map: Option<&Path>,
     ranking: &[(&String, &core::EngineData)],
     best_base: &Option<String>,
@@ -586,6 +593,7 @@ fn build_report_json(
         "member_rename": {
             "applied": renamed,
             "mode": rename_mode,
+            "flatten_packages": flatten_packages,
             "renamed_jar": if renamed { serde_json::Value::String(jar.to_string_lossy().into_owned()) } else { serde_json::Value::Null },
             "mapping": match rename_map { Some(p) => serde_json::Value::String(p.to_string_lossy().into_owned()), None => serde_json::Value::Null },
         },

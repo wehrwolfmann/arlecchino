@@ -94,15 +94,24 @@ public final class MemberRenamer {
     // we LOCK exactly those and nothing more.
     ClassLoader resolver = MemberRenamer.class.getClassLoader();
 
+    // OPT-IN package flattening (Stage Э9): when on, every in-jar type is moved into
+    // the DEFAULT (unnamed) package so a named-package class can name what used to be a
+    // default-package type.  Off by default — the 5th argv "flatten" turns it on.
+    boolean flattenPackages = false;
+    // old internal name -> flattened internal name (default-package, collision-safe).
+    final Map<String, String> typeRemap = new HashMap<>();
+
     // ---- entry ----------------------------------------------------------------
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
             System.err.println("usage: MemberRenamer <in.jar> <out.jar> <mapping.txt> "
-                    + "[framework_cp]");
+                    + "[framework_cp] [flatten]");
             System.exit(2);
         }
         MemberRenamer mr = new MemberRenamer();
         if (args.length >= 4 && !args[3].isEmpty()) mr.installResolver(args[3]);
+        if (args.length >= 5 && "flatten".equalsIgnoreCase(args[4]))
+            mr.flattenPackages = true;
         mr.run(new File(args[0]), new File(args[1]), new File(args[2]));
     }
 
@@ -128,13 +137,16 @@ public final class MemberRenamer {
         planFieldRenames();
         planTypeShadowFieldRenames();
         planConstInterfaceShadowRenames();
+        if (flattenPackages) planTypeFlatten();
         writeRenamed(in, out);
         writeMapping(mapping);
         System.out.println("MemberRenamer: classes=" + classes.size()
                 + " methodRenames=" + methodRenames.size()
                 + " fieldRenames=" + fieldRenames.size()
                 + " (typeShadowFields=" + typeShadowCount
-                + " constIfaceShadow=" + constShadowCount + ")");
+                + " constIfaceShadow=" + constShadowCount
+                + (flattenPackages ? " flattenedTypes=" + typeRemap.size() : "")
+                + ")");
     }
 
     // ---- load -----------------------------------------------------------------
@@ -242,33 +254,54 @@ public final class MemberRenamer {
      */
     final Map<String, Boolean> lockCache = new HashMap<>();
 
+    // root -> the member methods of that virtual group, as (declaring owner, MethodNode)
+    // pairs.  Built ONCE on first use (after buildVirtualGroups() has settled the
+    // union-find), so groupLocked() iterates only the group's own members instead of
+    // re-scanning every class × method on each call.  This changes only HOW membership
+    // is enumerated, not the lock predicate — the result is identical.
+    static final class Member {
+        final String owner; final MethodNode mn;
+        Member(String owner, MethodNode mn) { this.owner = owner; this.mn = mn; }
+    }
+    Map<String, List<Member>> groupMembers;   // null until built
+
+    /** One pass over all classes/methods to bucket every method by its group root. */
+    void buildGroupMembership() {
+        groupMembers = new HashMap<>();
+        for (Info info : classes.values()) {
+            for (MethodNode mn : info.node.methods) {
+                String root = find(mkey(info.name(), mn.name, mn.desc));
+                groupMembers.computeIfAbsent(root, r -> new ArrayList<>())
+                            .add(new Member(info.name(), mn));
+            }
+        }
+    }
+
     boolean groupLocked(String anyMemberKey) {
         String root = find(anyMemberKey);
         Boolean c = lockCache.get(root);
         if (c != null) return c;
+        if (groupMembers == null) buildGroupMembership();
         boolean locked = false;
-        // collect all members of this group
-        for (Map.Entry<String, String> e : uf.entrySet()) {
-            // iterate keys whose root is this root
-        }
-        // Build membership by scanning all method keys.
-        for (Info info : classes.values()) {
-            for (MethodNode mn : info.node.methods) {
-                String k = mkey(info.name(), mn.name, mn.desc);
-                if (!find(k).equals(root)) continue;
-                if (methodHasExternalContract(info.name(), mn)) { locked = true; break; }
+        // iterate ONLY this group's members (precomputed) — same predicate as before.
+        List<Member> members = groupMembers.get(root);
+        if (members != null) {
+            for (Member m : members) {
+                if (methodHasExternalContract(m.owner, m.mn)) { locked = true; break; }
             }
-            if (locked) break;
         }
         lockCache.put(root, locked);
         return locked;
     }
 
     // Well-known MIDP/CLDC + java.* callback signatures (name+full-descriptor) that an
-    // in-jar class may override.  Used ONLY as a fallback when an external supertype
-    // cannot be resolved via reflection (no MIDP stub on the resolver classpath).  With
-    // a stub present, step 1 already locks these precisely; this list just guarantees
-    // safety offline.  Keyed "name desc".
+    // in-jar class may override.  OFFLINE FALLBACK ONLY: used solely when an external
+    // supertype cannot be resolved via reflection (i.e. no MIDP/CLDC stub on the
+    // resolver classpath).  Since Stage Э8 `arlecchino setup` GENERATES a clean-room
+    // MIDP 2.0/CLDC 1.1 stub and `installResolver` always puts it on the classpath,
+    // step 1 below normally locks these PRECISELY and this list is never consulted; it
+    // exists only to keep dispatch safe when the stub couldn't be built (no javac).
+    // Keyed "name desc".
     static final Set<String> MIDP_CALLBACKS = new HashSet<>(Arrays.asList(
         // MIDlet
         "startApp ()V", "pauseApp ()V", "destroyApp (Z)V",
@@ -303,10 +336,13 @@ public final class MemberRenamer {
             if (jdkDeclaresMethod(sup, mn.name, mn.desc)) return true;
             if (!sup.equals("java/lang/Object") && !jdkResolvable(sup)) anyUnresolvable = true;
         }
-        // 2) fallback ONLY for unresolvable externals: lock just the well-known callback
-        //    signatures (so dispatch to a framework we can't see isn't broken).  We do
-        //    NOT blanket-lock every method — that would prevent fixing real return-type
-        //    collisions (e.g. i.a(int):Z vs i.a(int):I).
+        // 2) OFFLINE fallback ONLY for unresolvable externals: lock just the well-known
+        //    callback signatures (so dispatch to a framework we can't see isn't broken).
+        //    With the Stage Э8 generated MIDP/CLDC stub on the resolver classpath this
+        //    branch is normally dead (step 1 resolved javax.microedition.* precisely);
+        //    it triggers only when no stub could be built.  We do NOT blanket-lock every
+        //    method — that would prevent fixing real return-type collisions (e.g.
+        //    i.a(int):Z vs i.a(int):I).
         if (anyUnresolvable && MIDP_CALLBACKS.contains(mn.name + " " + mn.desc)) return true;
         return false;
     }
@@ -690,9 +726,71 @@ public final class MemberRenamer {
         return s.length() >= 8 ? s.substring(0, 8) : ("00000000" + s).substring(s.length());
     }
 
+    // ---- plan TYPE flatten (Stage Э9, OPT-IN) ---------------------------------
+    //
+    // The renamer fixes member-level source-illegalities, but one class of error is
+    // PACKAGE-level: a NAMED-package class (e.g. `Container.GameMIDlet`) that references
+    // a DEFAULT-(unnamed-)package in-jar type (`i`, `a`).  The Java language has NO
+    // syntax for a named-package class to name an unnamed-package type (JLS §6.5/§7.4.3),
+    // so the decompiled source is uncompilable no matter how members are renamed.  The
+    // only fix is a PORTING decision: move every type into ONE package.  We flatten to
+    // the DEFAULT package, so every type is nameable from every other.
+    //
+    // collision-safe: if two in-jar classes share the same flattened SIMPLE name (i.e.
+    // the same name lived in two different packages), keep the first deterministically
+    // (sorted by the original internal name) and disambiguate the rest with a stable
+    // `_<8hex of FNV-1a(original internal name)>` suffix (numeric-bump if still taken).
+    //
+    // Type references (extends/implements, field/var/descriptor types, NEW/CHECKCAST/
+    // INSTANCEOF, field & method owners, LDC class constants, signatures) are ALL
+    // rewritten by ClassRemapper via the Remapper.map(internalName) override below, so
+    // member-ref rewriting stays consistent.  String-CONSTANT class names (e.g. a
+    // `Class.forName("Container.GameMIDlet")` literal) are NOT type references and the
+    // Remapper does not touch them; the manifest's `Main-Class`/`MIDlet-N` entry is the
+    // one runtime string that DOES name the entry class, so writeRenamed() rewrites the
+    // manifest too (see there).  For Allods there are no `forName` string literals (the
+    // only `Container/GameMIDlet` occurrences are type DESCRIPTORS), so flatten is a
+    // complete, round-trip-safe fix that removes the 2 residual cross-package errors.
+    void planTypeFlatten() {
+        // deterministic order: by original internal name.
+        List<String> names = new ArrayList<>(classes.keySet());
+        Collections.sort(names);
+        Set<String> usedSimple = new HashSet<>();
+        for (String internal : names) {
+            String simple = internal.substring(internal.lastIndexOf('/') + 1);
+            String cand = simple;
+            if (usedSimple.contains(cand)) {
+                String base = simple + "_" + hex8(stableHash(internal));
+                cand = base;
+                int n = 2;
+                while (usedSimple.contains(cand)) cand = base + "_" + (n++);
+            }
+            usedSimple.add(cand);
+            // only record an ACTUAL move (skip already-default-package, unchanged names)
+            if (!cand.equals(internal)) {
+                typeRemap.put(internal, cand);
+                mappingLines.add(internal + " -> " + cand + "  (flatten-package)");
+            }
+        }
+    }
+
+    /** Flattened internal name for a type, or the name unchanged.  (Named distinctly
+     *  from ASM's Remapper.mapType so the anonymous Remapper below can call it without
+     *  accidentally recursing into the inherited method.) */
+    String flattenType(String internal) {
+        String nn = typeRemap.get(internal);
+        return nn != null ? nn : internal;
+    }
+
     // ---- write renamed jar via ClassRemapper ----------------------------------
     void writeRenamed(File in, File out) throws IOException {
         Remapper remapper = new Remapper() {
+            @Override public String map(String internalName) {
+                // TYPE remap (flatten) — only when flatten mode planned a move; otherwise
+                // identity, so default behaviour is byte-identical.  ClassRemapper routes
+                // every type reference through here.
+                return flattenPackages ? flattenType(internalName) : internalName;
+            }
             @Override public String mapMethodName(String owner, String name, String descriptor) {
                 String nn = lookupMethod(owner, name, descriptor);
                 return nn != null ? nn : name;
@@ -706,7 +804,10 @@ public final class MemberRenamer {
             }
         };
 
-        // copy non-class entries verbatim; transform classes.
+        // copy non-class entries verbatim; transform classes.  When flattening, a
+        // class's ENTRY PATH must follow its new internal name (Container/GameMIDlet
+        // .class -> GameMIDlet.class) so the .class location matches the class name the
+        // JVM/decompilers read, and the manifest's entry-class attributes are rewritten.
         try (JarFile jf = new JarFile(in);
              JarOutputStream jos = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(out)))) {
             Enumeration<JarEntry> e = jf.entries();
@@ -714,26 +815,87 @@ public final class MemberRenamer {
                 JarEntry je = e.nextElement();
                 if (je.isDirectory()) continue;
                 byte[] data;
+                String outName = je.getName();
                 if (je.getName().endsWith(".class")) {
+                    String internal = je.getName().substring(0, je.getName().length() - ".class".length());
                     try (InputStream is = jf.getInputStream(je)) {
                         ClassReader cr = new ClassReader(is);
                         ClassWriter cw = new ClassWriter(0);
                         ClassRemapper cv = new ClassRemapper(cw, remapper);
-                        cr.accept(cv, ClassReader.SKIP_FRAMES);
+                        // Read flags 0, NOT SKIP_FRAMES: a class file of major >= 50
+                        // (anything rebuilt by a modern javac) must keep its
+                        // StackMapTable or it dies at load time with `VerifyError:
+                        // Expecting a stackmap frame at branch target N`.  Renaming
+                        // members changes no stack shape at all, and ClassRemapper
+                        // remaps the types inside the frames too, so carrying them
+                        // through verbatim is both correct and exact.  Original phone
+                        // jars (major 48/49) carry no frames, so this is a no-op there.
+                        cr.accept(cv, 0);
                         data = cw.toByteArray();
+                    }
+                    if (flattenPackages && typeRemap.containsKey(internal))
+                        outName = typeRemap.get(internal) + ".class";
+                } else if (flattenPackages && isManifest(je.getName())) {
+                    try (InputStream is = jf.getInputStream(je)) {
+                        data = rewriteManifestClassNames(is.readAllBytes());
                     }
                 } else {
                     try (InputStream is = jf.getInputStream(je)) {
                         data = is.readAllBytes();
                     }
                 }
-                JarEntry ne = new JarEntry(je.getName());
+                JarEntry ne = new JarEntry(outName);
                 ne.setTime(je.getTime());
                 jos.putNextEntry(ne);
                 jos.write(data);
                 jos.closeEntry();
             }
         }
+    }
+
+    static boolean isManifest(String entry) {
+        return entry.equalsIgnoreCase("META-INF/MANIFEST.MF");
+    }
+
+    // Rewrite any FULLY-QUALIFIED (dotted) in-jar class name appearing in a manifest
+    // attribute VALUE to its flattened simple name.  This is the one runtime string that
+    // names a class: `Main-Class: pkg.Foo`, and J2ME `MIDlet-N: Name,icon,pkg.Foo` (the
+    // 3rd CSV field).  Only the exact dotted form of an in-jar type that we actually
+    // moved is replaced (word-boundary, longest-first), so unrelated text is untouched.
+    byte[] rewriteManifestClassNames(byte[] raw) {
+        String text = new String(raw, StandardCharsets.UTF_8);
+        // longest dotted names first so a prefix can't shadow a longer match.
+        List<String> moved = new ArrayList<>(typeRemap.keySet());
+        moved.sort((a, b) -> Integer.compare(b.length(), a.length()));
+        for (String internal : moved) {
+            String dotted = internal.replace('/', '.');
+            String repl = typeRemap.get(internal).replace('/', '.');
+            // replace the dotted name only when bounded by a non-identifier char (or
+            // string ends), so `Container.GameMIDlet` matches but `XContainer.GameMIDletY`
+            // would not.  Manifest values are line-oriented; we scan literally.
+            text = replaceClassToken(text, dotted, repl);
+        }
+        return text.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** Replace every occurrence of `from` in `s` that is bounded by non-Java-identifier,
+     *  non-'.' characters (so a dotted FQN is matched as a whole token). */
+    static String replaceClassToken(String s, String from, String to) {
+        StringBuilder out = new StringBuilder();
+        int i = 0;
+        while (i < s.length()) {
+            int idx = s.indexOf(from, i);
+            if (idx < 0) { out.append(s, i, s.length()); break; }
+            char before = idx > 0 ? s.charAt(idx - 1) : '\0';
+            int end = idx + from.length();
+            char after = end < s.length() ? s.charAt(end) : '\0';
+            boolean lb = !(Character.isJavaIdentifierPart(before) || before == '.');
+            boolean rb = !(Character.isJavaIdentifierPart(after) || after == '.');
+            out.append(s, i, idx);
+            if (lb && rb) out.append(to); else out.append(from);
+            i = end;
+        }
+        return out.toString();
     }
 
     /**
