@@ -4,6 +4,11 @@
 //!
 //! Порт `arlecchino/midprun.py`.
 //!
+//! Исходники форка живут в этом же дереве — subtree `midp-rt/` (LGPL 2.1). Готовый
+//! `midp-rt.jar` в git НЕ хранится (у форка свой `.gitignore` на `build/`), поэтому
+//! путь к нему ищется по порядку: `--midp-rt` → `$ARLECCHINO_MIDP_RT` → корень
+//! движков → рядом с бинарём → `build/` любого найденного чекаута форка.
+//!
 //! ⚖️ Граница LGPL = граница ПРОЦЕССА (решение B0): этот модуль только СОБИРАЕТ
 //! командную строку java и порождает отдельный процесс — ни строчки LGPL-кода не
 //! импортируется, не копируется и не линкуется в Arlecchino.
@@ -31,13 +36,89 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Форк живёт внутри Python-чекаута (subtree `midp-rt/`, LGPL 2.1); отдельный
-/// чекаут, откуда он был импортирован, тоже уважается как запасной.
-pub fn vendored_midp_rt_repo() -> PathBuf {
-    util::home_dir().join("Projects").join("arlecchino-python").join("midp-rt")
+/// Каталог запущенного бинаря (для поиска «рядом с собой»).
+fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
 }
-pub fn default_midp_rt_repo() -> PathBuf {
-    util::home_dir().join("Projects").join("arlecchino-midp-rt")
+
+/// Имя подкаталога с исходниками форка (subtree `midp-rt/`, LGPL 2.1).
+pub const REPO_DIRNAME: &str = "midp-rt";
+/// Имя собранного артефакта рантайма.
+pub const JAR_NAME: &str = "midp-rt.jar";
+/// Сколько уровней вверх от каталога бинаря просматривать (хватает на
+/// `target/release/arlecchino` → корень дерева).
+const EXE_ANCESTORS: usize = 4;
+
+/// Все места, где может лежать ЧЕКАУТ форка, в порядке приоритета:
+///
+/// 1. `$ARLECCHINO_MIDP_RT_SRC` — явное указание;
+/// 2. `<корень движков>/midp-rt` — куда его может положить `arlecchino setup`;
+/// 3. рядом с бинарём: `<каталог бинаря>/midp-rt` и тот же подкаталог у каждого
+///    предка (так собранный в `target/release/` бинарь находит subtree в дереве);
+/// 4. `~/Projects/arlecchino-midp-rt` — отдельный чекаут, запасной путь.
+///
+/// ⚖️ Ни один из них не втягивается в сборку: это ИСХОДНИКИ отдельного
+/// артефакта, который собирает свой `build.sh` и запускает отдельный процесс.
+pub fn midp_rt_repos(root: Option<&Path>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let mut push = |p: PathBuf| {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    };
+    if let Ok(v) = std::env::var("ARLECCHINO_MIDP_RT_SRC") {
+        if !v.is_empty() {
+            push(util::expanduser(&v));
+        }
+    }
+    let engines = root.map(|r| r.to_path_buf()).unwrap_or_else(engines_root_default);
+    push(engines.join(REPO_DIRNAME));
+    if let Some(dir) = exe_dir() {
+        // сам каталог бинаря плюс несколько предков: `target/release/arlecchino`
+        // должен доставать до корня дерева, а дальше подниматься незачем.
+        let mut cur: Option<&Path> = Some(dir.as_path());
+        for _ in 0..EXE_ANCESTORS {
+            match cur {
+                Some(d) => {
+                    push(d.join(REPO_DIRNAME));
+                    cur = d.parent();
+                }
+                None => break,
+            }
+        }
+    }
+    push(util::home_dir().join("Projects").join("arlecchino-midp-rt"));
+    out
+}
+
+/// Первый чекаут форка, в котором действительно есть `build.sh`.
+pub fn midp_rt_repo(root: Option<&Path>) -> Option<PathBuf> {
+    midp_rt_repos(root).into_iter().find(|r| r.join("build.sh").is_file())
+}
+
+/// Все места, где ищется ГОТОВЫЙ `midp-rt.jar` (тем же порядком, что и чекауты:
+/// переменная окружения → корень движков → рядом с бинарём → чекауты).
+pub fn midp_rt_jar_candidates(root: Option<&Path>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let mut push = |p: PathBuf| {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    };
+    if let Ok(v) = std::env::var("ARLECCHINO_MIDP_RT") {
+        if !v.is_empty() {
+            push(util::expanduser(&v));
+        }
+    }
+    let engines = root.map(|r| r.to_path_buf()).unwrap_or_else(engines_root_default);
+    push(engines.join(JAR_NAME));
+    if let Some(dir) = exe_dir() {
+        push(dir.join(JAR_NAME));
+    }
+    for repo in midp_rt_repos(root) {
+        push(repo.join("build").join(JAR_NAME));
+    }
+    out
 }
 
 /// Главный класс окна (отдельный процесс) рантайма.
@@ -46,25 +127,42 @@ pub const MAIN_WINDOW: &str = "org.microemu.app.Main";
 pub const MAIN_HEADLESS: &str = "org.microemu.app.Headless";
 
 /// Сообщение «как это починить» на случай отсутствующего midp-rt.jar.
-pub fn missing_hint(checked: &[PathBuf]) -> String {
-    let repo = if vendored_midp_rt_repo().is_dir() {
-        vendored_midp_rt_repo()
-    } else {
-        default_midp_rt_repo()
-    };
+/// `checked` пуст → перечисляем стандартные места сами.
+pub fn missing_hint(checked: &[PathBuf], root: Option<&Path>) -> String {
     let mut lines = vec![
         "midp-rt.jar not found — the MIDP runtime (LGPL fork of MicroEmulator) \
          is a separate artifact."
             .to_string(),
-        format!("Build it:  cd {} && ./build.sh", repo.display()),
-        "or point at an existing jar with --midp-rt PATH / $ARLECCHINO_MIDP_RT.".to_string(),
     ];
-    if !checked.is_empty() {
-        lines.push(
-            "checked: ".to_string()
-                + &checked.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", "),
-        );
+    match midp_rt_repo(root) {
+        Some(repo) => lines.push(format!("Build it:  cd {} && ./build.sh", repo.display())),
+        None => {
+            lines.push(
+                "No source checkout of the fork was found either. Put one at \
+                 <engines root>/midp-rt, next to the arlecchino binary, or at \
+                 ~/Projects/arlecchino-midp-rt — or set $ARLECCHINO_MIDP_RT_SRC."
+                    .to_string(),
+            );
+            lines.push(
+                "searched: ".to_string()
+                    + &midp_rt_repos(root)
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+            );
+        }
     }
+    lines.push("or point at an existing jar with --midp-rt PATH / $ARLECCHINO_MIDP_RT.".to_string());
+    let checked: Vec<PathBuf> = if checked.is_empty() {
+        midp_rt_jar_candidates(root)
+    } else {
+        checked.to_vec()
+    };
+    lines.push(
+        "checked: ".to_string()
+            + &checked.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", "),
+    );
     lines.join("\n")
 }
 
@@ -80,14 +178,7 @@ pub fn find_midp_rt(explicit: Option<&str>, root: Option<&Path>) -> Option<PathB
             return Some(p);
         }
     }
-    let root = root.map(|r| r.to_path_buf()).unwrap_or_else(engines_root_default);
-    [
-        root.join("midp-rt.jar"),
-        vendored_midp_rt_repo().join("build").join("midp-rt.jar"),
-        default_midp_rt_repo().join("build").join("midp-rt.jar"),
-    ]
-    .into_iter()
-    .find(|cand| cand.exists())
+    midp_rt_jar_candidates(root).into_iter().find(|cand| cand.exists())
 }
 
 /// midp-rt.jar плюс ASM-jar(ы), нужные его инструментации MIDlet-ов
@@ -95,7 +186,11 @@ pub fn find_midp_rt(explicit: Option<&str>, root: Option<&Path>) -> Option<PathB
 pub fn runtime_classpath(midp_rt: &Path) -> Vec<PathBuf> {
     let mut cp = vec![midp_rt.to_path_buf()];
     let dirs = [
+        // раскладка чекаута: build/midp-rt.jar рядом с ../lib/asm-*.jar
         midp_rt.parent().and_then(|p| p.parent()).map(|p| p.join("lib")),
+        // раскладка установки: midp-rt.jar рядом с lib/asm-*.jar
+        midp_rt.parent().map(|p| p.join("lib")),
+        // всё вповалку в одном каталоге
         midp_rt.parent().map(|p| p.to_path_buf()),
     ];
     for d in dirs.into_iter().flatten() {
@@ -349,7 +444,7 @@ pub fn run_headless_midp_rt(
 ) -> Result<HeadlessResult, String> {
     let rt = match find_midp_rt(midp_rt, None) {
         Some(p) => p,
-        None => return Err(missing_hint(&[])),
+        None => return Err(missing_hint(&[], None)),
     };
     let java = util::tool("ARLECCHINO_JAVA", "java");
     if which(&java).is_none() {
@@ -463,14 +558,20 @@ pub fn run_midlet(game: &Path, midp_rt: &Path, o: &WindowOpts) -> i32 {
 
 /// Прогнать `./build.sh` форка (его собственный репозиторий — сюда ничего не
 /// вкладывается). None при успехе, человекочитаемая строка ошибки иначе.
-pub fn build_midp_rt(repo: Option<&Path>) -> Option<String> {
-    let repo = repo.map(|p| p.to_path_buf()).unwrap_or_else(|| {
-        if vendored_midp_rt_repo().join("build.sh").exists() {
-            vendored_midp_rt_repo()
-        } else {
-            default_midp_rt_repo()
+pub fn build_midp_rt(repo: Option<&Path>, root: Option<&Path>) -> Option<String> {
+    let repo = match repo.map(|p| p.to_path_buf()).or_else(|| midp_rt_repo(root)) {
+        Some(r) => r,
+        None => {
+            return Some(format!(
+                "no fork checkout found (searched: {})",
+                midp_rt_repos(root)
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
         }
-    });
+    };
     let script = repo.join("build.sh");
     if !script.exists() {
         return Some(format!("no fork checkout at {}", repo.display()));
@@ -503,31 +604,51 @@ pub fn setup_midp_rt(root: Option<&Path>) -> String {
     let mut jar = find_midp_rt(None, root);
     let mut built = String::new();
     if jar.is_none() {
-        let err = build_midp_rt(None);
+        let err = build_midp_rt(None, root);
         jar = if err.is_none() { find_midp_rt(None, root) } else { None };
         if jar.is_none() {
-            let repo = if vendored_midp_rt_repo().is_dir() {
-                vendored_midp_rt_repo()
-            } else {
-                default_midp_rt_repo()
-            };
             return format!(
-                "not found ({}) — build it: cd {} && ./build.sh (or set $ARLECCHINO_MIDP_RT)",
+                "not found ({})\n{}",
                 err.unwrap_or_else(|| "build.sh produced no jar".into()),
-                repo.display()
+                missing_hint(&[], root)
             );
         }
         built = "built via build.sh; ".into();
     }
     let jar = jar.unwrap();
+    // Поставить рантайм в корень движков: `<root>/midp-rt.jar` + `<root>/lib/asm-*.jar`.
+    // После этого чекаут исходников больше не нужен ни для чего, кроме пересборки.
+    let mut installed = String::new();
+    let root = root.map(|r| r.to_path_buf()).unwrap_or_else(engines_root_default);
+    let target = root.join(JAR_NAME);
+    let jar = if jar != target {
+        let asm_src = runtime_classpath(&jar);
+        let libdir = root.join("lib");
+        let ok = std::fs::create_dir_all(&libdir).is_ok()
+            && std::fs::copy(&jar, &target).is_ok()
+            && asm_src.iter().skip(1).all(|a| {
+                a.file_name()
+                    .map(|n| std::fs::copy(a, libdir.join(n)).is_ok())
+                    .unwrap_or(false)
+            });
+        if ok {
+            installed = "installed -> ".to_string();
+            target
+        } else {
+            jar
+        }
+    } else {
+        jar
+    };
     let asm: Vec<String> = runtime_classpath(&jar)
         .into_iter()
         .skip(1)
         .map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
         .collect();
     format!(
-        "ok ({}{}; asm: {})",
+        "ok ({}{}{}; asm: {})",
         built,
+        installed,
         jar.display(),
         if asm.is_empty() {
             "NOT FOUND — instrumentation needs lib/asm*.jar".to_string()

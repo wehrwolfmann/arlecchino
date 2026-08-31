@@ -8,6 +8,10 @@ license = "Apache-2.0"
 readme = "README.md"
 keywords = ["decompiler", "java", "j2me", "midp", "meta-decompilation"]
 repository = "https://github.com/wehrwolfmann/arlecchino"
+# midp-rt/ is the vendored LGPL fork of MicroEmulator: SOURCE of a separate Java
+# artifact, built by its own build.sh and run as a separate process. It is never
+# compiled or linked into this crate, and it stays out of the packaged crate too.
+exclude = ["midp-rt/", "target/", "arlecchino_out/"]
 
 [[bin]]
 name = "arlecchino"

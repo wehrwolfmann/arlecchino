@@ -45,8 +45,8 @@ enum Cmd {
 struct RunArgs {
     /// game .jar or .jad
     jar: String,
-    /// path to midp-rt.jar (default: $ARLECCHINO_MIDP_RT, ~/.arlecchino/engines/midp-rt.jar,
-    /// then the midp-rt/ subtree of the python checkout)
+    /// path to midp-rt.jar (default: $ARLECCHINO_MIDP_RT, <engines root>/midp-rt.jar,
+    /// next to the binary, then build/midp-rt.jar of any midp-rt/ checkout found)
     #[arg(long = "midp-rt")]
     midp_rt: Option<String>,
     /// directory for persistent RMS saves (isolated <dir>/.microemulator/...)
@@ -769,7 +769,13 @@ fn cmd_setup(a: &SetupArgs) -> i32 {
     for (k, v) in &res {
         println!("  {k:12} {v}");
     }
-    if !a.no_freej2me {
+    // `--only` называет ровно те движки, что нужны: FreeJ2ME он тоже фильтрует,
+    // иначе `setup --only midp-rt` без спроса лезет в сеть за эмулятором.
+    let want_freej2me = only
+        .as_deref()
+        .map(|o| o.iter().any(|x| x == "freej2me"))
+        .unwrap_or(true);
+    if !a.no_freej2me && want_freej2me {
         println!("  freej2me     ...");
         let fr = setup_freej2me(
             Some(&root),
@@ -876,12 +882,9 @@ fn cmd_run(a: &RunArgs) -> i32 {
         None => {
             let checked = match a.midp_rt.as_deref() {
                 Some(p) => vec![util::expanduser(p)],
-                None => vec![
-                    engines_root_default().join("midp-rt.jar"),
-                    midprun::default_midp_rt_repo().join("build").join("midp-rt.jar"),
-                ],
+                None => Vec::new(),
             };
-            println!("{}", midprun::missing_hint(&checked));
+            println!("{}", midprun::missing_hint(&checked, None));
             return 1;
         }
     };

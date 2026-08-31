@@ -119,6 +119,23 @@ process** — the LGPL boundary is the process boundary; nothing LGPL is linked 
 waiting in the runtime's launcher. `--headless` captures PNG frames + `index.json`
 instead of opening a window.
 
+**Where midp-rt comes from.** Its sources are vendored in this repository under
+`midp-rt/` (git subtree, LGPL 2.1 — see `midp-rt/COPYING-LGPL-2.1`), but the built
+jar is not: `midp-rt/build/` is git-ignored. Build it once with
+`arlecchino setup --only midp-rt` (which runs `midp-rt/build.sh` for you), or by
+hand with `cd midp-rt && ./build.sh`. The jar is then looked up in this order:
+
+1. `--midp-rt PATH`;
+2. `$ARLECCHINO_MIDP_RT`;
+3. `<engines root>/midp-rt.jar` (`~/.arlecchino/engines` by default);
+4. `midp-rt.jar` next to the `arlecchino` binary;
+5. `build/midp-rt.jar` inside any source checkout of the fork — `$ARLECCHINO_MIDP_RT_SRC`,
+   `<engines root>/midp-rt`, a `midp-rt/` directory beside the binary or in any of its
+   parent directories (so a `target/release/` build finds the in-tree subtree), or
+   `~/Projects/arlecchino-midp-rt`.
+
+If none of these hit, the command prints every path it checked and how to fix it.
+
 ### `difftest` — behavioural diff (does the rebuilt jar still behave the same?)
 
 Runs both jars headless with the same input script and compares the **structure of
