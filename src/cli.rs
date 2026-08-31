@@ -366,12 +366,12 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
     // relaxes) the existing "fix accepted only if strictly fewer errors" invariant.
     // core.rs's merge decision logic is untouched; this lives entirely in the CLI.
     let mut drift_reverts: Vec<String> = Vec::new();
-    if a.reject_semantic_drift
-        && merged_dir.is_some()
-        && rename_map.is_some()
-        && crate::semdiff::javap_available()
-    {
-        let md = merged_dir.as_ref().unwrap();
+    if let (true, Some(md), true, true) = (
+        a.reject_semantic_drift,
+        merged_dir.as_ref(),
+        rename_map.is_some(),
+        crate::semdiff::javap_available(),
+    ) {
         println!("\n== REJECT-SEMANTIC-DRIFT (autofix re-verification) ==");
         let api_cp = core::build_api_classpath(&jar, classpath.as_deref(), &out);
         // CONFIG order, like the reference implementation's `data.items()` — not the
