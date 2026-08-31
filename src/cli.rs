@@ -170,6 +170,11 @@ struct DecompileArgs {
     /// semantic round-trip check: flag methods whose symbolic reference set drifted
     #[arg(long = "semdiff")]
     semdiff: bool,
+    /// implies --semdiff; DISCARD an autofixed class whose recompiled bytecode drifts
+    /// from the original (reverting to the best non-autofixed variant when that does
+    /// not raise its isolated error count) — strengthens the "fewer errors only" invariant
+    #[arg(long = "reject-semantic-drift")]
+    reject_semantic_drift: bool,
 }
 
 #[derive(Args)]
@@ -344,6 +349,110 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         }
     }
 
+    // ── reject-semantic-drift (optional, off by default) ────────────────────
+    // An ADDITIVE post-merge guard.  For every class the merge log marked as
+    // autofixed, we re-derive the best NON-autofixed variant; if the autofixed
+    // class's recompiled bytecode drifts from the original jar's bytecode while the
+    // non-autofixed variant does NOT (and reverting does not RAISE that class's
+    // isolated error count), we revert it.  This only ever discards a semantics-
+    // changing autofix — it can never accept a worse result, so it strengthens (never
+    // relaxes) the existing "fix accepted only if strictly fewer errors" invariant.
+    // core.rs's merge decision logic is untouched; this lives entirely in the CLI.
+    let mut drift_reverts: Vec<String> = Vec::new();
+    if a.reject_semantic_drift
+        && merged_dir.is_some()
+        && rename_map.is_some()
+        && crate::semdiff::javap_available()
+    {
+        let md = merged_dir.as_ref().unwrap();
+        println!("\n== REJECT-SEMANTIC-DRIFT (autofix re-verification) ==");
+        let api_cp = core::build_api_classpath(&jar, classpath.as_deref(), &out);
+        let names: Vec<&String> = names_rank.iter().map(|(n, _)| *n).collect();
+        let known: HashSet<&String> =
+            names.iter().flat_map(|n| data[*n].files.keys()).collect();
+        // classes the merge autofixed (merge_log line: "REL: <- ENG+autofix(...)")
+        let mut autofixed: Vec<String> = merge_log
+            .iter()
+            .filter(|l| l.contains("autofix") && l.contains(':'))
+            .filter_map(|l| l.trim().split(':').next().map(|r| r.trim().to_string()))
+            .filter(|r| known.contains(r))
+            .collect();
+        autofixed.sort();
+        autofixed.dedup();
+        let drift_work = out.join("_semdiff_drift");
+        for rel in &autofixed {
+            let tgt = md.join(rel);
+            if !tgt.exists() {
+                continue;
+            }
+            let after_text = match util::read_text_lossy(&tgt) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            // best non-autofixed variant = the engine variant with the lowest
+            // isolated score (no autofix applied)
+            let mut best_raw: Option<String> = None;
+            let mut best_raw_score: Option<i64> = None;
+            for n in &names {
+                let f = match data[*n].files.get(rel) {
+                    Some(f) => f,
+                    None => continue,
+                };
+                let sc = core::compile_file_isolated(f, &api_cp, &drift_work.join("score"));
+                if best_raw_score.map(|b| sc < b).unwrap_or(true) {
+                    match util::read_text_lossy(f) {
+                        Ok(t) => {
+                            best_raw_score = Some(sc);
+                            best_raw = Some(t);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+            let best_raw = match best_raw {
+                Some(t) => t,
+                None => continue,
+            };
+            if !crate::semdiff::variant_drifts(
+                &jar,
+                &best_raw,
+                &after_text,
+                rel,
+                &api_cp,
+                &drift_work,
+                rename_map.as_deref(),
+            ) {
+                continue;
+            }
+            // autofix drifted; only revert if the raw variant is NOT worse in isolation
+            let cur_score = per_iso.get(rel).copied().unwrap_or(0);
+            match best_raw_score {
+                Some(brs) if brs <= cur_score => {
+                    let _ = std::fs::write(&tgt, &best_raw);
+                    per_iso.insert(rel.clone(), brs);
+                    drift_reverts.push(rel.clone());
+                    println!(
+                        "  {rel}: autofix DISCARDED (semantic drift; reverted to raw \
+                         variant, isolated errors {cur_score}->{brs})"
+                    );
+                }
+                _ => {
+                    println!(
+                        "  {rel}: autofix flagged as drifting but raw variant scores \
+                         worse ({} > {cur_score}) — KEPT (invariant: never accept a \
+                         worse result)",
+                        best_raw_score.map(|v| v.to_string()).unwrap_or_else(|| "None".into())
+                    );
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&drift_work);
+        if drift_reverts.is_empty() {
+            println!("  no autofixed class reverted.");
+        }
+        merged_total = Some(per_iso.values().sum());
+    }
+
     // round-trip
     let mut rt: Option<RoundTrip> = None;
     if let Some(md) = &merged_dir {
@@ -390,7 +499,9 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
 
     // ── семантический round-trip (по желанию, по умолчанию выключен) ────────
     let mut semdiff_report: Option<crate::semdiff::SemdiffReport> = None;
-    if let (true, Some(md), false) = (a.semdiff, merged_dir.as_ref(), a.no_roundtrip) {
+    if let (true, Some(md), false) =
+        (a.semdiff || a.reject_semantic_drift, merged_dir.as_ref(), a.no_roundtrip)
+    {
         println!("\n== SEMANTIC ROUND-TRIP (semdiff) ==");
         let classes_dir = md.join("_classes");
         // пропускаем классы, которые не пересобрались (их .class — засеянный
@@ -415,6 +526,13 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
                 sem.checked,
                 sem.skipped.len()
             );
+            if !drift_reverts.is_empty() {
+                println!(
+                    "  reverted {} drifted autofix(es): {}",
+                    drift_reverts.len(),
+                    drift_reverts.join(", ")
+                );
+            }
             if sem.total_flagged_methods == 0 {
                 println!("  no semantic drift flagged.");
             } else {
@@ -505,6 +623,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         deobf_info.as_ref(),
         metrics.as_ref(),
         semdiff_report.as_ref(),
+        &drift_reverts,
     );
     let _ = std::fs::write(
         out.join("report.json"),
@@ -554,6 +673,7 @@ fn build_report_json(
     deobf_info: Option<&serde_json::Value>,
     metrics: Option<&crate::metrics::Metrics>,
     semdiff: Option<&crate::semdiff::SemdiffReport>,
+    drift_reverts: &[String],
 ) -> serde_json::Value {
     let ranking_json: Vec<serde_json::Value> = ranking
         .iter()
@@ -606,6 +726,7 @@ fn build_report_json(
         "deobf": match deobf_info { Some(d) => d.clone(), None => serde_json::Value::Null },
         "metrics": match metrics { Some(m) => serde_json::to_value(m).unwrap_or(serde_json::Value::Null), None => serde_json::Value::Null },
         "semdiff": match semdiff { Some(m) => serde_json::to_value(m).unwrap_or(serde_json::Value::Null), None => serde_json::Value::Null },
+        "semantic_drift_reverts": drift_reverts,
     })
 }
 

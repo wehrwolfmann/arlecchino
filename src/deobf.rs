@@ -100,5 +100,9 @@ pub fn emit_jadx_deobf(jar: &Path, jadx_bin: &Path, outdir: &Path) -> bool {
         jar.to_string_lossy().into_owned(),
     ];
     let r = util::run_capture(&argv, Some(std::time::Duration::from_secs(900)));
-    r.spawn_err.is_none()
+    // A run killed by the timeout is a FAILURE: the tree it left behind is partial.
+    // The Python original raises TimeoutExpired here and reports False; reporting
+    // success would print a "jadx --deobf tree -> ..." line pointing at a truncated
+    // tree, and record it in report.json.
+    r.spawn_err.is_none() && !r.timed_out
 }
