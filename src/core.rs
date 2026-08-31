@@ -26,6 +26,24 @@ pub struct EngineData {
     pub errors: i64,
     pub per: BTreeMap<String, i64>,
     pub nclasses: usize,
+    /// Position of this engine in the CONFIG, not in the (alphabetical) map.  The
+    /// reference implementation keeps its engine results in an insertion-ordered
+    /// dict, so every "first wins" tie — the per-class best-of pick, the donor
+    /// scan — resolves in config order.  Keying the map by name alone would resolve
+    /// those ties alphabetically instead and silently select a different engine, so
+    /// the config position travels with the data.
+    pub order: usize,
+}
+
+/// Engine names of type `names`, in CONFIG order (the reference's dict order).
+pub fn names_in_config_order(engine_data: &BTreeMap<String, EngineData>) -> Vec<&String> {
+    let mut v: Vec<(usize, &String)> = engine_data
+        .iter()
+        .filter(|(_, d)| d.type_ == "names")
+        .map(|(n, d)| (d.order, n))
+        .collect();
+    v.sort_by_key(|(o, _)| *o);
+    v.into_iter().map(|(_, n)| n).collect()
 }
 
 /// True if the FIRST top-level type declaration in `text` is an interface.
@@ -175,6 +193,7 @@ pub fn decompile_all(
                     files,
                     errors: total,
                     per,
+                    order: i,
                 };
                 results.lock().unwrap().push((eng.name.clone(), d));
             });
@@ -240,11 +259,7 @@ pub fn merge_isolated(
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    let names: Vec<&String> = engine_data
-        .iter()
-        .filter(|(_, d)| d.type_ == "names")
-        .map(|(n, _)| n)
-        .collect();
+    let names: Vec<&String> = names_in_config_order(engine_data);
     let mut all_rels: BTreeSet<String> = BTreeSet::new();
     for n in &names {
         for r in engine_data[*n].files.keys() {
@@ -476,11 +491,11 @@ pub fn merge_best(
 
     let (mut total, per, _) = compile_dir(&merge, classpath);
     let mut log = vec![format!("base={base_name} errors={total}")];
-    let mut donors: Vec<&String> = engine_data
-        .iter()
-        .filter(|(n, d)| d.type_ == "names" && n.as_str() != base_name)
-        .map(|(n, _)| n)
+    let mut donors: Vec<&String> = names_in_config_order(engine_data)
+        .into_iter()
+        .filter(|n| n.as_str() != base_name)
         .collect();
+    // stable sort: engines with an equal error count keep their config order
     donors.sort_by_key(|n| engine_data[*n].errors);
 
     // 1) per-class file swap
@@ -522,11 +537,7 @@ pub fn merge_best(
 
     // 2) auto-fix pass on whatever still fails
     if do_autofix && total > 0 {
-        let all_names: Vec<&String> = engine_data
-            .iter()
-            .filter(|(_, d)| d.type_ == "names")
-            .map(|(n, _)| n)
-            .collect();
+        let all_names: Vec<&String> = names_in_config_order(engine_data);
         let (_, per_now, _) = compile_dir(&merge, classpath);
         let mut pn_keys: Vec<String> = per_now.keys().cloned().collect();
         pn_keys.sort();
@@ -572,4 +583,53 @@ pub fn merge_best(
         final_per.len()
     ));
     (merge, final_total, log)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ed(order: usize, type_: &str, errors: i64) -> EngineData {
+        EngineData {
+            type_: type_.to_string(),
+            src: PathBuf::new(),
+            files: BTreeMap::new(),
+            errors,
+            per: BTreeMap::new(),
+            nclasses: 0,
+            order,
+        }
+    }
+
+    /// The engine map is keyed by name (alphabetical), but every "first wins" tie
+    /// must resolve in CONFIG order, exactly as the reference implementation's
+    /// insertion-ordered dict does.
+    #[test]
+    fn names_follow_config_order_not_alphabet() {
+        let mut m: BTreeMap<String, EngineData> = BTreeMap::new();
+        for (i, n) in ["vineflower", "cfr", "procyon", "jadx"].iter().enumerate() {
+            m.insert((*n).to_string(), ed(i, "names", 0));
+        }
+        let got: Vec<&str> = names_in_config_order(&m)
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        assert_eq!(got, vec!["vineflower", "cfr", "procyon", "jadx"]);
+        // ... which is NOT what plain map iteration gives
+        let alpha: Vec<&str> = m.keys().map(|s| s.as_str()).collect();
+        assert_eq!(alpha, vec!["cfr", "jadx", "procyon", "vineflower"]);
+    }
+
+    #[test]
+    fn names_skips_engines_of_other_types() {
+        let mut m: BTreeMap<String, EngineData> = BTreeMap::new();
+        m.insert("vineflower".into(), ed(0, "names", 0));
+        m.insert("renamed-thing".into(), ed(1, "renamed", 0));
+        m.insert("cfr".into(), ed(2, "names", 0));
+        let got: Vec<&str> = names_in_config_order(&m)
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        assert_eq!(got, vec!["vineflower", "cfr"]);
+    }
 }
