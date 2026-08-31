@@ -164,12 +164,21 @@ To use a different icon, replace those files and rebuild, or replace the install
 copies in place. Keep them self-contained (no raster data, no fonts, no external
 references) — the launcher writes the file verbatim.
 
-## Language (RU / EN)
+## Language (EN / RU / DE)
 
-All user-facing text (GUI and CLI framing/errors) is available in **Russian** and
-**English**. The language is chosen from the system locale (`LC_ALL` → `LC_MESSAGES` →
-`LANG`; `ru*` → Russian, everything else → English). Override with `ARLECCHINO_LANG=ru`
-or `ARLECCHINO_LANG=en`. Technical output (report.json / report.md content, progress and
+All user-facing text (GUI and CLI framing/errors) is available in **English**,
+**Russian** and **German**. Resolution order:
+
+1. `ARLECCHINO_LANG=en|ru|de` — override (also how the GUI passes its language to the
+   CLI subprocesses it starts);
+2. the stored preference in `~/.config/arlecchino/settings.toml`
+   (`language = "system" | "en" | "ru" | "de"`), written by the GUI's **Settings ->
+   Language** menu — the default, `system`, keeps the locale behaviour below;
+3. the system locale (`LC_ALL` → `LC_MESSAGES` → `LANG`; `ru*` → Russian, `de*` →
+   German, everything else → English).
+
+Switching the language in the GUI takes effect immediately — no restart — and is kept
+for the next start. Technical output (report.json / report.md content, progress and
 merge logs, file paths, flag names) is left stable and untranslated.
 
 ## Honest error counts

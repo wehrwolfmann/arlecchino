@@ -10,7 +10,7 @@ use eframe::egui;
 use ksni::menu::{MenuItem, StandardItem};
 use ksni::ToolTip;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Themed icon used when the app icon has not been installed into the user's icon
 /// theme (i.e. "Add to application menu" was never pressed).
@@ -84,9 +84,21 @@ impl ksni::Tray for ArlTray {
     }
 }
 
+/// Handle of the running tray, kept so the menu can be rebuilt (e.g. after the user
+/// switches the interface language).
+static HANDLE: OnceLock<ksni::Handle<ArlTray>> = OnceLock::new();
+
 /// Spawn the tray in a background ksni thread. Failures are swallowed (tray optional).
 pub fn spawn(ctx: egui::Context, quit: Arc<AtomicBool>) {
     let tray = ArlTray { quit, ctx };
     let service = ksni::TrayService::new(tray);
+    let _ = HANDLE.set(service.handle());
     service.spawn();
+}
+
+/// Ask the tray to rebuild its menu and tool-tip from the current language tables.
+pub fn refresh() {
+    if let Some(h) = HANDLE.get() {
+        h.update(|_| {});
+    }
 }

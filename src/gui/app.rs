@@ -5,7 +5,7 @@
 //! CLI stays the single source of truth.  The light `normalize` action calls the
 //! library function directly.  All user-facing text is routed through `i18n::t`.
 
-use crate::i18n::{self, t, tf};
+use crate::i18n::{self, t, tf, Lang, LangPref};
 use crate::{launcher, normalize, uninstall};
 use eframe::egui;
 use std::path::PathBuf;
@@ -17,6 +17,7 @@ enum Tab {
     Decompile,
     Emulate,
     Setup,
+    Settings,
     About,
 }
 
@@ -38,6 +39,8 @@ pub struct ArlApp {
     scale: String,
     // setup
     setup_no_freej2me: bool,
+    // settings
+    lang_pref: LangPref,
     // runtime
     log: Arc<Mutex<String>>,
     running: Arc<AtomicBool>,
@@ -65,6 +68,7 @@ impl ArlApp {
             height: "220".into(),
             scale: "2".into(),
             setup_no_freej2me: false,
+            lang_pref: i18n::load_pref(),
             log: Arc::new(Mutex::new(String::new())),
             running: Arc::new(AtomicBool::new(false)),
             status_key: Arc::new(Mutex::new("status_idle")),
@@ -98,10 +102,7 @@ impl ArlApp {
         let status = self.status_key.clone();
         let cli = self.cli.clone();
         let ctx = ctx.clone();
-        let lang_env = match i18n::lang() {
-            i18n::Lang::Ru => "ru",
-            i18n::Lang::En => "en",
-        };
+        let lang_env = i18n::lang().code();
         running.store(true, Ordering::Relaxed);
         if let Ok(mut st) = status.lock() {
             *st = "status_running";
@@ -216,6 +217,7 @@ impl eframe::App for ArlApp {
                 ui.selectable_value(&mut self.tab, Tab::Decompile, t("tab_decompile"));
                 ui.selectable_value(&mut self.tab, Tab::Emulate, t("tab_emulate"));
                 ui.selectable_value(&mut self.tab, Tab::Setup, t("tab_setup"));
+                ui.selectable_value(&mut self.tab, Tab::Settings, t("tab_settings"));
                 ui.selectable_value(&mut self.tab, Tab::About, t("tab_about"));
                 ui.separator();
                 ui.menu_button(t("menu_app"), |ui| {
@@ -272,6 +274,7 @@ impl eframe::App for ArlApp {
             Tab::Decompile => self.ui_decompile(ui, ctx),
             Tab::Emulate => self.ui_emulate(ui, ctx),
             Tab::Setup => self.ui_setup(ui, ctx),
+            Tab::Settings => self.ui_settings(ui, ctx),
             Tab::About => self.ui_about(ui),
         });
 
@@ -420,12 +423,62 @@ impl ArlApp {
         }
     }
 
+    fn ui_settings(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.heading(t("tab_settings"));
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label(t("settings_language"));
+            let mut chosen = self.lang_pref;
+            egui::ComboBox::from_id_salt("ui_language")
+                .selected_text(pref_label(chosen))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut chosen,
+                        LangPref::System,
+                        pref_label(LangPref::System),
+                    );
+                    for l in Lang::ALL {
+                        // Language names stay in their own language, never translated.
+                        ui.selectable_value(&mut chosen, LangPref::Fixed(*l), l.native_name());
+                    }
+                });
+            if chosen != self.lang_pref {
+                self.set_language(chosen, ctx);
+            }
+        });
+        ui.add_space(4.0);
+        ui.colored_label(super::theme::DIM, t("settings_language_hint"));
+    }
+
+    /// Switch the UI language now and remember the choice for the next start.
+    fn set_language(&mut self, pref: LangPref, ctx: &egui::Context) {
+        self.lang_pref = pref;
+        if let Err(e) = i18n::set_pref(pref) {
+            // The switch itself already took effect; only storing it failed.
+            self.append_log(&format!("settings error: {e}"));
+        }
+        // Anything drawn outside the per-frame `t()` calls has to be re-sent.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(t("app_title").to_string()));
+        #[cfg(feature = "tray")]
+        crate::tray::refresh();
+        ctx.request_repaint();
+    }
+
     fn ui_about(&mut self, ui: &mut egui::Ui) {
         ui.heading(t("app_title"));
         ui.add_space(8.0);
         ui.label(t("about_body"));
         ui.add_space(8.0);
         ui.colored_label(super::theme::DIM, format!("v{}", crate::VERSION));
+    }
+}
+
+/// Menu label for a language preference: "System" is translated, a concrete language
+/// is always shown under its own name.
+fn pref_label(p: LangPref) -> &'static str {
+    match p {
+        LangPref::System => t("settings_language_system"),
+        LangPref::Fixed(l) => l.native_name(),
     }
 }
 
