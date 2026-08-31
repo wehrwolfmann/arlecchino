@@ -289,15 +289,8 @@ pub fn merge_per_method(
 
     // Donors are tried in CONFIG order and the first improvement wins, so the order
     // decides which engine's method lands.  engine_data is keyed by name, so
-    // iterating it hands them over alphabetically; `order` carries the position in
-    // the config, which is what the reference implementation iterates.
-    let mut names: Vec<(usize, &String)> = engine_data
-        .iter()
-        .filter(|(_, d)| d.type_ == "names")
-        .map(|(n, d)| (d.order, n))
-        .collect();
-    names.sort();
-    let names: Vec<&String> = names.into_iter().map(|(_, n)| n).collect();
+    // iterating it directly hands them over alphabetically instead.
+    let names: Vec<&String> = crate::core::names_in_config_order(engine_data);
     let mut improved = 0usize;
     for rel in &failing {
         let target = merge_dir.join(rel);

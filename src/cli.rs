@@ -376,10 +376,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         let api_cp = core::build_api_classpath(&jar, classpath.as_deref(), &out);
         // CONFIG order, like the reference implementation's `data.items()` — not the
         // ranking, and not the alphabetical order of the by-name map.
-        let mut names: Vec<(usize, &String)> =
-            names_rank.iter().map(|(n, d)| (d.order, *n)).collect();
-        names.sort();
-        let names: Vec<&String> = names.into_iter().map(|(_, n)| n).collect();
+        let names: Vec<&String> = core::names_in_config_order(&data);
         let known: HashSet<&String> =
             names.iter().flat_map(|n| data[*n].files.keys()).collect();
         // classes the merge autofixed (merge_log line: "REL: <- ENG+autofix(...)")
