@@ -13,6 +13,25 @@
 //! identically on both the base and donor sides, so cross-engine matching stays
 //! consistent; the scanner recognises single-line method/constructor headers with a
 //! body (the common decompiler-output shape).
+//!
+//! DELIBERATE DIVERGENCE (measured, see below): methods are visited in KEY order,
+//! while the reference visits them in source order.  The pass is greedy — the first
+//! donor that lowers the file's isolated error count wins the method and the search
+//! moves on — so the visit order decides which local optimum it lands in.  On the
+//! Allods `a.java` the reference's source order finds one splice and stops at
+//! isolated-sum 4; key order finds two and reaches 3.  Both go through exactly the
+//! same "strictly fewer errors" gate, so the lower number is not a relaxation.
+//! Neither order is principled, so this keeps the better result; to go back to the
+//! reference's numbers, iterate `method_spans(&cur)` in source order instead of
+//! `spans_map(&cur).keys()` in `per_method_merge`.
+//!
+//! The key is the ERASED signature, and it must read the same string out of every
+//! engine's spelling of the same declaration, or a method simply never finds its
+//! donor.  Two things it therefore has to handle, both of which Procyon emits and a
+//! naive first-token split gets wrong: parameter modifiers (`final boolean b` — the
+//! type is `boolean`, not `final`) and nested commas inside generics.  Constructors
+//! key as `<init>(...)`, not by the class name, because a normaliser can rename the
+//! enclosing type between engines.
 
 use crate::core::{compile_file_isolated, EngineData};
 use crate::util::{self, split_keepends};
@@ -23,7 +42,7 @@ use std::sync::LazyLock;
 
 static HEADER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^[ \t]*(?:(?:public|private|protected|static|final|abstract|synchronized|native|strictfp|default)\s+)*(?:[\w$.<>\[\], ]+?\s+)?(?P<name>[A-Za-z_$][\w$]*)\s*\((?P<params>[^)]*)\)[^{;]*\{[ \t]*$",
+        r"^[ \t]*(?:(?:public|private|protected|static|final|abstract|synchronized|native|strictfp|default)\s+)*(?P<ret>[\w$.<>\[\], ]+?\s+)?(?P<name>[A-Za-z_$][\w$]*)\s*\((?P<params>[^)]*)\)[^{;]*\{[ \t]*$",
     )
     .unwrap()
 });
@@ -39,16 +58,33 @@ fn first_token(s: &str) -> &str {
 }
 
 /// Simple erased type name for a single parameter declaration (`int a` -> `int`,
-/// `a.b.C[] x` -> `C`).  Used only for internally-consistent method keys.
+/// `a.b.C[] x` -> `C`, `final boolean b` -> `boolean`, `String... a` -> `String`).
+/// Used only for internally-consistent method keys.
 fn param_type(p: &str) -> String {
     let p = p.trim();
     if p.is_empty() {
         return String::new();
     }
-    let mut tok = p.split_whitespace().next().unwrap_or("").to_string();
+    // Skip anything in front of the type: annotations and the `final` modifier.
+    // Procyon spells every parameter `final T x`, so taking the first token blindly
+    // keys the method on "final" and it never matches another engine's version of
+    // the same method — and, worse, all its overloads collapse onto one key.
+    let mut tok = "";
+    for t in p.split_whitespace() {
+        if t.starts_with('@') || t == "final" {
+            continue;
+        }
+        tok = t;
+        break;
+    }
+    let mut tok = tok.to_string();
     // strip generics
     if let Some(i) = tok.find('<') {
         tok.truncate(i);
+    }
+    // varargs `T...` is the type T (a trailing "..." would eat the dotted-name step)
+    if let Some(stripped) = tok.strip_suffix("...") {
+        tok = stripped.to_string();
     }
     // strip array brackets
     tok = tok.replace("[]", "").replace(['[', ']'], "");
@@ -59,11 +95,35 @@ fn param_type(p: &str) -> String {
     tok
 }
 
+/// Split a parameter list on the commas that SEPARATE parameters, ignoring commas
+/// nested inside generics/arrays (`Map<String, Integer> m, int x` is two parameters).
+fn split_params(params: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    for ch in params.chars() {
+        match ch {
+            '<' | '(' | '[' => {
+                depth += 1;
+                cur.push(ch);
+            }
+            '>' | ')' | ']' => {
+                depth -= 1;
+                cur.push(ch);
+            }
+            ',' if depth <= 0 => out.push(std::mem::take(&mut cur)),
+            _ => cur.push(ch),
+        }
+    }
+    out.push(cur);
+    out
+}
+
 fn make_key(name: &str, params: &str) -> String {
     let ps: Vec<String> = if params.trim().is_empty() {
         Vec::new()
     } else {
-        params.split(',').map(param_type).collect()
+        split_params(params).iter().map(|p| param_type(p)).collect()
     };
     format!("{name}({})", ps.join(","))
 }
@@ -84,6 +144,11 @@ pub fn method_spans(text: &str) -> Vec<(String, usize, usize)> {
                 continue;
             }
             let params = cap.name("params").unwrap().as_str();
+            // No return type => constructor.  Key it `<init>` like the reference
+            // implementation: its source name is the enclosing class name, which a
+            // normaliser can rename between engines, and then the same constructor
+            // would carry two different keys and never match.
+            let name = if cap.name("ret").is_none() { "<init>" } else { name };
             let key = make_key(name, params);
             let start = idx + 1;
             let end = match_end(&lines, idx);
@@ -161,6 +226,7 @@ pub fn per_method_merge<F: Fn(&str) -> i64>(
     if cur_err == 0 {
         return (cur, log);
     }
+    // Key order, not source order — see the DELIBERATE DIVERGENCE note at the top.
     let base_spans = spans_map(&cur);
     for key in base_spans.keys() {
         for (dn, dtext) in donor_texts {
@@ -221,11 +287,17 @@ pub fn merge_per_method(
         compile_file_isolated(&tf, api_classpath, &tmp.join("_o"))
     };
 
-    let names: Vec<&String> = engine_data
+    // Donors are tried in CONFIG order and the first improvement wins, so the order
+    // decides which engine's method lands.  engine_data is keyed by name, so
+    // iterating it hands them over alphabetically; `order` carries the position in
+    // the config, which is what the reference implementation iterates.
+    let mut names: Vec<(usize, &String)> = engine_data
         .iter()
         .filter(|(_, d)| d.type_ == "names")
-        .map(|(n, _)| n)
+        .map(|(n, d)| (d.order, n))
         .collect();
+    names.sort();
+    let names: Vec<&String> = names.into_iter().map(|(_, n)| n).collect();
     let mut improved = 0usize;
     for rel in &failing {
         let target = merge_dir.join(rel);
@@ -253,4 +325,66 @@ pub fn merge_per_method(
         "per-method result: improved {improved} class(es), isolated-sum={iso_sum2}"
     ));
     log
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The erased key has to read the same out of every engine's spelling of one
+    /// declaration.  Procyon writes `final T x` for every parameter; keying on the
+    /// first token gave "final", so its methods never matched another engine's and
+    /// its own overloads collapsed onto one key (18 methods -> 12 keys in the Allods
+    /// `a.java`, which silently dropped six of them).
+    #[test]
+    fn param_modifiers_do_not_become_the_type() {
+        assert_eq!(param_type("final boolean b"), "boolean");
+        assert_eq!(param_type("boolean b"), "boolean");
+        assert_eq!(param_type("final java.io.DataInputStream in"), "DataInputStream");
+        assert_eq!(param_type("@Nonnull final String s"), "String");
+        assert_eq!(param_type("int[] a"), "int");
+        assert_eq!(param_type("final String... rest"), "String");
+        assert_eq!(param_type(""), "");
+    }
+
+    #[test]
+    fn keys_match_across_engine_spellings() {
+        // Procyon vs CFR spelling of the same declaration
+        assert_eq!(
+            make_key("destroyApp", "final boolean b"),
+            make_key("destroyApp", "boolean unconditional")
+        );
+        assert_eq!(
+            make_key("a", "final String s, final int n, final Font font"),
+            make_key("a", "String str, int i, Font font")
+        );
+    }
+
+    /// Commas inside generics separate type arguments, not parameters.
+    #[test]
+    fn generic_commas_do_not_split_parameters() {
+        assert_eq!(split_params("Map<String, Integer> m, int x").len(), 2);
+        assert_eq!(make_key("f", "Map<String, Integer> m, int x"), "f(Map,int)");
+    }
+
+    /// A header with no return type is a constructor and keys as `<init>`, so it
+    /// still matches after a normaliser renames the enclosing type.
+    #[test]
+    fn constructors_key_as_init() {
+        let src = "class q {\n    public q(int a, int b) {\n        this.a = a;\n    }\n\
+                   \n    public void a(Graphics g) {\n        g.f();\n    }\n}\n";
+        let keys: Vec<String> = method_spans(src).into_iter().map(|(k, _, _)| k).collect();
+        assert_eq!(keys, vec!["<init>(int,int)".to_string(), "a(Graphics)".to_string()]);
+    }
+
+    /// Spans are 1-based and end on the matching closing brace.
+    #[test]
+    fn spans_cover_the_whole_body() {
+        let src = "class A {\n    void f(int x) {\n        if (x > 0) {\n            g();\n\
+                   \n        }\n    }\n}\n";
+        let spans = method_spans(src);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].0, "f(int)");
+        assert_eq!((spans[0].1, spans[0].2), (2, 7));
+    }
 }

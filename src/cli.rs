@@ -277,8 +277,15 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
 
     // ranking: (errors asc, nclasses desc)
     let mut ranking: Vec<(&String, &core::EngineData)> = data.iter().collect();
+    // The reference implementation sorts the engines in CONFIG order, and its sort is
+    // stable, so an (errors, -nclasses) tie keeps the config order.  `data` is keyed
+    // by name here, so sorting it stably would break ties alphabetically instead and
+    // hand `best_base` to a different engine; `order` restores the config position.
     ranking.sort_by(|(_, x), (_, y)| {
-        x.errors.cmp(&y.errors).then(y.nclasses.cmp(&x.nclasses))
+        x.errors
+            .cmp(&y.errors)
+            .then(y.nclasses.cmp(&x.nclasses))
+            .then(x.order.cmp(&y.order))
     });
     println!("\n== RANKING (fewer errors = better) ==");
     for (n, d) in &ranking {
@@ -367,7 +374,12 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         let md = merged_dir.as_ref().unwrap();
         println!("\n== REJECT-SEMANTIC-DRIFT (autofix re-verification) ==");
         let api_cp = core::build_api_classpath(&jar, classpath.as_deref(), &out);
-        let names: Vec<&String> = names_rank.iter().map(|(n, _)| *n).collect();
+        // CONFIG order, like the reference implementation's `data.items()` — not the
+        // ranking, and not the alphabetical order of the by-name map.
+        let mut names: Vec<(usize, &String)> =
+            names_rank.iter().map(|(n, d)| (d.order, *n)).collect();
+        names.sort();
+        let names: Vec<&String> = names.into_iter().map(|(_, n)| n).collect();
         let known: HashSet<&String> =
             names.iter().flat_map(|n| data[*n].files.keys()).collect();
         // classes the merge autofixed (merge_log line: "REL: <- ENG+autofix(...)")
