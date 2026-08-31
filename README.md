@@ -58,6 +58,7 @@ arlecchino decompile <jar> [-o OUT] [-cp DEPS] [--config C] [-j N]
                      [--midp-stub JAR | --no-midp-stub]
                      [--rename-members | --no-rename-members]
                      [--per-method] [--deobf] [--no-autofix] [--no-roundtrip]
+                     [--semdiff] [--reject-semantic-drift]
 arlecchino emulate   <jar> [--freej2me P] [-W 176] [-H 220] [-s 2]
 arlecchino run       <jar|jad> [--midp-rt P] [--size WxH] [--rms-dir D]
                      [--no-instrument] [--trace FILE]
@@ -75,11 +76,18 @@ arlecchino difftest  <orig.jar> [rebuilt.jar] [--input SCRIPT] [-o OUT]
 
 ### `setup` — get the engines + emulator
 
-Downloads **Vineflower, CFR, Procyon, jadx** from their GitHub releases and builds or
-fetches **FreeJ2ME** into `~/.arlecchino/engines/`. It also downloads **ASM**
-(`org.ow2.asm`, BSD-3-Clause) from Maven Central into `~/.arlecchino/engines/asm/` and
-compiles the bytecode member-renamer helper against it. Each tool keeps its own
-license; nothing is vendored in this repo.
+Downloads **Vineflower, CFR, Procyon, jadx** (plus **JD-Core, Jode, Fernflower and
+Dava**) from their GitHub releases and builds or fetches **FreeJ2ME** into
+`~/.arlecchino/engines/`. It also downloads **ASM** (`org.ow2.asm`, BSD-3-Clause) from
+Maven Central into `~/.arlecchino/engines/asm/` and compiles the bytecode
+member-renamer helper against it. Each tool keeps its own license; nothing is vendored
+in this repo.
+
+Every engine is **pinned to an exact release tag** — the download asks for
+`releases/tags/<tag>`, never `releases/latest`, so an upstream release cannot silently
+shift the headline metric. Override a pin with `ARLECCHINO_<ENGINE>_VERSION`
+(`ARLECCHINO_FREEJ2ME_PLUS_VERSION` for the emulator). Set `GITHUB_TOKEN` / `GH_TOKEN`
+to lift the anonymous 60 req/h GitHub API rate limit.
 
 ### `decompile` — multi-decompile + best-of merge
 
@@ -105,6 +113,14 @@ license; nothing is vendored in this repo.
 reference sets of the original and the recompiled bytecode are compared (owner
 dropped, `StringBuffer`/`StringBuilder` unified, renamer mapping reconciled), so an
 auto-fix that silently changed semantics is flagged even when member counts match.
+
+`decompile --reject-semantic-drift` implies `--semdiff` and turns the report into a
+decision: every class the merge auto-fixed is re-verified, and an auto-fix whose
+recompiled bytecode drifts from the original is **discarded** in favour of the best
+non-auto-fixed variant — but only when reverting does not raise that class's isolated
+error count. It can therefore only ever tighten the existing "accept a fix only if it
+strictly lowers the error count" rule, never relax it. Reverted classes are listed in
+`report.json` under `semantic_drift_reverts`.
 
 ### `emulate` — run the jar in FreeJ2ME
 
