@@ -1,0 +1,4 @@
+MIDlet-1: Test, , TestMidlet
+MIDlet-Name: Test
+MIDlet-Version: 1.0
+MIDlet-Vendor: x
