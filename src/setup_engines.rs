@@ -8,6 +8,15 @@
 //! FreeJ2ME is fetched as a prebuilt release jar or built from source with `javac`
 //! (no Ant).  Every step degrades gracefully offline.
 //!
+//! Every GitHub-hosted engine is PINNED to an exact release tag, overridable via
+//! ARLECCHINO_<ENGINE>_VERSION.  We ask for that tag's assets (`releases/tags/<tag>`)
+//! and never `releases/latest`, so an upstream release cannot silently shift the
+//! headline metric (Allods 712 -> 2; see README "Reproducibility").  The direct
+//! downloads carry their version in the URL and are pinned by construction.
+//!
+//! When GITHUB_TOKEN / GH_TOKEN is set it is sent as an `Authorization: Bearer`
+//! header, lifting the anonymous 60 req/h GitHub API rate limit.
+//!
 //! Together these give the eight decompilers of Harrand et al.'s decompiler-diversity
 //! study: CFR, Procyon, Fernflower (both the maintained Vineflower fork and the original
 //! standalone engine), JADX, JD-Core, Jode, and Dava.  Krakatau is not fetched: its v1
@@ -29,13 +38,65 @@ fn asm_version() -> String {
     util::tool("ARLECCHINO_ASM_VERSION", "9.7")
 }
 
+// Pinned engine release tags, overridable via ARLECCHINO_<ENGINE>_VERSION.  These
+// exact versions reproduce the Allods headline metric 712 -> 2.  jd-cli's newest
+// release is a beta; the pin freezes the one this port was measured against instead
+// of following whatever `releases/latest` happens to point at.
+fn engine_tag(name: &str) -> String {
+    match name {
+        "vineflower" => util::tool("ARLECCHINO_VINEFLOWER_VERSION", "1.12.0"),
+        "cfr" => util::tool("ARLECCHINO_CFR_VERSION", "0.152"),
+        "procyon" => util::tool("ARLECCHINO_PROCYON_VERSION", "v0.6.0"),
+        "jadx" => util::tool("ARLECCHINO_JADX_VERSION", "v1.5.5"),
+        "jd-core" => util::tool("ARLECCHINO_JD_CLI_VERSION", "jd-cli-1.3.0-beta-1"),
+        _ => String::new(),
+    }
+}
+
+/// Pinned FreeJ2ME-plus release tag (reproducibility of the diff-testing harness).
+/// Tag 1.52 ships `freej2me-v1.52.zip` with freej2me.jar (AWT) AND freej2me-lr.jar
+/// (libretro pipe frontend, which diffrun drives for headless capture).
+fn freej2me_version() -> String {
+    util::tool("ARLECCHINO_FREEJ2ME_PLUS_VERSION", "1.52")
+}
+
+/// The FreeJ2ME release asset we want: the jar bundle, NOT the native libretro core.
+fn freej2me_asset_pred(a: &str) -> bool {
+    a.ends_with(".zip") && !a.contains("libretro")
+}
+
+/// Jars extracted from the FreeJ2ME bundle into the engines root.
+const FREEJ2ME_JARS: &[&str] = &["freej2me.jar", "freej2me-lr.jar"];
+
+/// GitHub API URL for a SPECIFIC release tag (never `releases/latest`).
+fn release_api_url(repo: &str, tag: &str) -> String {
+    format!("https://api.github.com/repos/{repo}/releases/tags/{tag}")
+}
+
+/// Attach our base headers, plus `Authorization: Bearer` when GITHUB_TOKEN /
+/// GH_TOKEN is set (lifts the 60 req/h anonymous rate limit).
+fn gh_request(url: &str, timeout: Duration) -> ureq::Request {
+    let mut req = ureq::get(url).set("User-Agent", UA).timeout(timeout);
+    if let Some(t) = gh_token() {
+        req = req.set("Authorization", &format!("Bearer {t}"));
+    }
+    req
+}
+
+fn gh_token() -> Option<String> {
+    for k in ["GITHUB_TOKEN", "GH_TOKEN"] {
+        if let Ok(v) = std::env::var(k) {
+            if !v.is_empty() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
 // ── GitHub release helpers ───────────────────────────────────────────────────
 fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
-    let resp = ureq::get(url)
-        .set("User-Agent", UA)
-        .timeout(Duration::from_secs(60))
-        .call()
-        .map_err(|e| e.to_string())?;
+    let resp = gh_request(url, Duration::from_secs(60)).call().map_err(|e| e.to_string())?;
     resp.into_json::<serde_json::Value>().map_err(|e| e.to_string())
 }
 
@@ -43,20 +104,21 @@ fn download(url: &str, dst: &Path) -> Result<(), String> {
     if let Some(p) = dst.parent() {
         std::fs::create_dir_all(p).map_err(|e| e.to_string())?;
     }
-    let resp = ureq::get(url)
-        .set("User-Agent", UA)
-        .timeout(Duration::from_secs(300))
-        .call()
-        .map_err(|e| e.to_string())?;
+    let resp = gh_request(url, Duration::from_secs(300)).call().map_err(|e| e.to_string())?;
     let mut reader = resp.into_reader();
     let mut f = std::fs::File::create(dst).map_err(|e| e.to_string())?;
     std::io::copy(&mut reader, &mut f).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// (asset_name, browser_download_url) of the first release asset matching `pred`.
-fn latest_asset(repo: &str, pred: impl Fn(&str) -> bool) -> Result<Option<(String, String)>, String> {
-    let data = http_get_json(&format!("https://api.github.com/repos/{repo}/releases/latest"))?;
+/// (asset_name, browser_download_url) of the first asset matching `pred` in the
+/// release tagged `tag`.  Pinned by construction — no `releases/latest`.
+fn tagged_asset(
+    repo: &str,
+    tag: &str,
+    pred: impl Fn(&str) -> bool,
+) -> Result<Option<(String, String)>, String> {
+    let data = http_get_json(&release_api_url(repo, tag))?;
     if let Some(assets) = data.get("assets").and_then(|a| a.as_array()) {
         for a in assets {
             let name = a.get("name").and_then(|n| n.as_str()).unwrap_or("");
@@ -82,7 +144,10 @@ fn engine_pred(name: &str) -> Box<dyn Fn(&str) -> bool> {
             a.starts_with("cfr-") && a.ends_with(".jar") && !a.contains("javadoc") && !a.contains("sources")
         }),
         "procyon" => Box::new(|a: &str| {
-            a.starts_with("procyon-decompiler") && a.ends_with(".jar") && !a.contains("sources")
+            a.starts_with("procyon-decompiler")
+                && a.ends_with(".jar")
+                && !a.contains("sources")
+                && !a.contains("javadoc")
         }),
         "jadx" => Box::new(|a: &str| a.starts_with("jadx-") && a.ends_with(".zip") && !a.contains("gui")),
         "jd-core" => Box::new(|a: &str| a.starts_with("jd-cli") && a.ends_with("-dist.zip")),
@@ -135,10 +200,11 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
             continue;
         }
         let repo = engine_repo(name);
+        let tag = engine_tag(name);
         let status = (|| -> String {
-            let asset = match latest_asset(repo, engine_pred(name)) {
+            let asset = match tagged_asset(repo, &tag, engine_pred(name)) {
                 Ok(Some(a)) => a,
-                Ok(None) => return "no matching asset".into(),
+                Ok(None) => return format!("no matching asset for tag {tag}"),
                 Err(e) => return format!("FAILED: {e}"),
             };
             let (fname, url) = asset;
@@ -162,7 +228,7 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
                     let _ = std::fs::set_permissions(&jadx_bin, std::fs::Permissions::from_mode(0o755));
                 }
                 let _ = std::fs::remove_file(&zpath);
-                "ok (jadx/bin/jadx)".into()
+                format!("ok (jadx/bin/jadx) [{tag}]")
             } else if *name == "jd-core" {
                 // the jd-cli release is a zip; pull the single fat jar out of it.
                 let zpath = root.join(&fname);
@@ -187,7 +253,7 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
                     return format!("FAILED: {e}");
                 }
                 let _ = std::fs::remove_file(&zpath);
-                "ok (jd-cli.jar)".into()
+                format!("ok (jd-cli.jar) [{tag}]")
             } else {
                 let target = root.join(match *name {
                     "vineflower" => "vineflower.jar",
@@ -199,7 +265,7 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
                 if let Err(e) = download(&url, &target) {
                     return format!("FAILED: {e}");
                 }
-                format!("ok ({})", target.file_name().unwrap().to_string_lossy())
+                format!("ok ({}) [{tag}]", target.file_name().unwrap().to_string_lossy())
             }
         })();
         result.push((name.to_string(), status));
@@ -277,41 +343,43 @@ pub fn setup_asm(root: &Path) -> String {
 }
 
 // ── FreeJ2ME ─────────────────────────────────────────────────────────────────
-fn download_freej2me_release(dst: &Path) -> Option<String> {
-    let rels = http_get_json(&format!("https://api.github.com/repos/{FREEJ2ME_REPO}/releases")).ok()?;
-    let arr = rels.as_array()?;
-    let mut url: Option<String> = None;
-    'outer: for rel in arr {
-        if let Some(assets) = rel.get("assets").and_then(|a| a.as_array()) {
-            for a in assets {
-                let n = a.get("name").and_then(|x| x.as_str()).unwrap_or("");
-                if n.ends_with(".zip") && !n.contains("libretro") {
-                    url = a
-                        .get("browser_download_url")
-                        .and_then(|x| x.as_str())
-                        .map(|s| s.to_string());
-                    break 'outer;
-                }
-            }
+/// Download the PINNED FreeJ2ME-plus release zip into `dst_dir` and extract BOTH of
+/// its jars: freej2me.jar (AWT frontend) and freej2me-lr.jar (libretro pipe frontend,
+/// which diffrun drives for headless frame capture).  None on failure.
+fn download_freej2me_release(dst_dir: &Path) -> Option<String> {
+    let tag = freej2me_version();
+    let (fname, url) = tagged_asset(FREEJ2ME_REPO, &tag, freej2me_asset_pred).ok()??;
+    let ztmp = dst_dir.join("_fj_release.zip");
+    println!("  [freej2me] downloading prebuilt {fname} [{tag}] ...");
+    download(&url, &ztmp).ok()?;
+    let names = util::zip_namelist(&ztmp).ok()?;
+    let mut got: Vec<&str> = Vec::new();
+    for jar in FREEJ2ME_JARS {
+        let member = match names.iter().find(|m| m.ends_with(jar)) {
+            Some(m) => m.clone(),
+            None => continue,
+        };
+        let dst = dst_dir.join(jar);
+        if let Some(p) = dst.parent() {
+            let _ = std::fs::create_dir_all(p);
+        }
+        let bytes = match util::zip_read_entry(&ztmp, &member) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        if std::fs::write(&dst, bytes).is_ok() {
+            got.push(jar);
         }
     }
-    let url = url?;
-    let ztmp = dst.parent()?.join("_fj_release.zip");
-    println!(
-        "  [freej2me] downloading prebuilt {} ...",
-        url.rsplit('/').next().unwrap_or("")
-    );
-    download(&url, &ztmp).ok()?;
-    // find the freej2me.jar member and extract it to dst
-    let names = util::zip_namelist(&ztmp).ok()?;
-    let member = names.into_iter().find(|m| m.ends_with("freej2me.jar"))?;
-    if let Some(p) = dst.parent() {
-        let _ = std::fs::create_dir_all(p);
-    }
-    let bytes = util::zip_read_entry(&ztmp, &member).ok()?;
-    std::fs::write(dst, bytes).ok()?;
     let _ = std::fs::remove_file(&ztmp);
-    Some(format!("ok (prebuilt release -> {})", dst.display()))
+    if !got.contains(&"freej2me.jar") {
+        return None;
+    }
+    Some(format!(
+        "ok (prebuilt release {} -> {}) [{tag}]",
+        got.join(", "),
+        dst_dir.display()
+    ))
 }
 
 pub fn setup_freej2me(root: Option<&Path>, prebuilt: Option<&Path>, src_dir: Option<&Path>) -> String {
@@ -328,8 +396,10 @@ pub fn setup_freej2me(root: Option<&Path>, prebuilt: Option<&Path>, src_dir: Opt
         }
     }
 
+    // Prefer the official prebuilt release jars (FreeJ2ME's AWT frontend often will
+    // not compile cleanly on modern JDKs); the release is PINNED, no `latest` drift.
     if src_dir.is_none() {
-        if let Some(rel) = download_freej2me_release(&dst) {
+        if let Some(rel) = download_freej2me_release(&root) {
             return rel;
         }
     }
@@ -340,12 +410,15 @@ pub fn setup_freej2me(root: Option<&Path>, prebuilt: Option<&Path>, src_dir: Opt
             work = sd.to_path_buf();
         }
     } else if !work.exists() {
-        println!("  [freej2me] cloning TASEmulators/freej2me-plus ...");
+        let tag = freej2me_version();
+        println!("  [freej2me] cloning {FREEJ2ME_REPO} @ {tag} ...");
         let argv = vec![
             "git".to_string(),
             "clone".into(),
             "--depth".into(),
             "1".into(),
+            "--branch".into(),
+            tag,
             "https://github.com/TASEmulators/freej2me-plus.git".into(),
             work.to_string_lossy().into_owned(),
         ];
@@ -476,4 +549,203 @@ pub fn build_freej2me(src: &Path, dst: &Path) -> String {
         );
     }
     format!("ok (built {n_cls} classes -> {})", dst.display())
+}
+
+// ── stage E2: engine version pinning, ENV overrides, GITHUB_TOKEN header ─────
+// Port of tests/test_engine_pins.py.  No network: we assert the CONSTRUCTED API
+// URL (tag, never `releases/latest`), the asset predicates and the request
+// HEADERS.  The version accessors read the environment on every call, so the
+// ENV-override checks just set the variable — but the environment is process-wide,
+// so those tests take a lock and put it back.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// pinned-by-default versions (these reproduce Allods 712 -> 2)
+    const PINNED: &[(&str, &str, &str)] = &[
+        ("vineflower", "Vineflower/vineflower", "1.12.0"),
+        ("cfr", "leibnitz27/cfr", "0.152"),
+        ("procyon", "mstrobel/procyon", "v0.6.0"),
+        ("jadx", "skylot/jadx", "v1.5.5"),
+    ];
+
+    const ENV_KEYS: &[&str] = &[
+        "ARLECCHINO_VINEFLOWER_VERSION",
+        "ARLECCHINO_CFR_VERSION",
+        "ARLECCHINO_PROCYON_VERSION",
+        "ARLECCHINO_JADX_VERSION",
+        "ARLECCHINO_JD_CLI_VERSION",
+        "ARLECCHINO_FREEJ2ME_PLUS_VERSION",
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+    ];
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Take the env lock and clear every variable these tests touch, so a test
+    /// always starts from the pinned defaults and cannot leak an override into a
+    /// test running after it.
+    fn clean_env() -> MutexGuard<'static, ()> {
+        let g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        for k in ENV_KEYS {
+            std::env::remove_var(k);
+        }
+        g
+    }
+
+    // ── (a) pinned by default ───────────────────────────────────────────────
+    #[test]
+    fn each_engine_resolves_to_pinned_version_by_default() {
+        let _g = clean_env();
+        assert_eq!(engine_tag("vineflower"), "1.12.0");
+        assert_eq!(engine_tag("cfr"), "0.152");
+        assert_eq!(engine_tag("procyon"), "v0.6.0");
+        assert_eq!(engine_tag("jadx"), "v1.5.5");
+        for (name, repo, tag) in PINNED {
+            assert_eq!(engine_repo(name), *repo);
+            assert_eq!(engine_tag(name), *tag);
+        }
+    }
+
+    #[test]
+    fn release_url_uses_tag_not_latest() {
+        let _g = clean_env();
+        for (_name, repo, tag) in PINNED {
+            let url = release_api_url(repo, tag);
+            assert_eq!(url, format!("https://api.github.com/repos/{repo}/releases/tags/{tag}"));
+            assert!(!url.contains("releases/latest"), "{url}");
+            assert!(url.contains(&format!("/tags/{tag}")), "{url}");
+        }
+    }
+
+    #[test]
+    fn asset_predicates_match_pinned_asset_names() {
+        // the exact asset filenames published under each pinned tag
+        let assets = [
+            ("vineflower", "vineflower-1.12.0.jar"),
+            ("cfr", "cfr-0.152.jar"),
+            ("procyon", "procyon-decompiler-0.6.0.jar"),
+            ("jadx", "jadx-1.5.5.zip"),
+        ];
+        for (name, fname) in assets {
+            assert!(engine_pred(name)(fname), "{name}: {fname}");
+        }
+        // negative: sources/javadoc/slim/gui variants must NOT match
+        assert!(!engine_pred("vineflower")("vineflower-1.12.0-slim.jar"));
+        assert!(!engine_pred("cfr")("cfr-0.152-sources.jar"));
+        assert!(!engine_pred("procyon")("procyon-decompiler-0.6.0-sources.jar"));
+        assert!(!engine_pred("procyon")("procyon-decompiler-0.6.0-javadoc.jar"));
+        assert!(!engine_pred("jadx")("jadx-gui-1.5.5.zip"));
+    }
+
+    /// jd-cli has no counterpart in the Python original (this port adds four more
+    /// engines).  Its newest release is a beta, which is exactly why the tag is
+    /// pinned rather than resolved through `releases/latest`.
+    #[test]
+    fn jd_core_is_pinned_too() {
+        let _g = clean_env();
+        let tag = engine_tag("jd-core");
+        assert_eq!(tag, "jd-cli-1.3.0-beta-1");
+        assert_eq!(engine_repo("jd-core"), "intoolswetrust/jd-cli");
+        assert!(release_api_url(engine_repo("jd-core"), &tag).ends_with(
+            "/repos/intoolswetrust/jd-cli/releases/tags/jd-cli-1.3.0-beta-1"
+        ));
+        assert!(engine_pred("jd-core")("jd-cli-1.3.0-beta-1-dist.zip"));
+        assert!(!engine_pred("jd-core")("jd-cli-1.3.0-beta-1-dist.tar.gz"));
+    }
+
+    // ── (b) ENV override honored ────────────────────────────────────────────
+    #[test]
+    fn env_override_is_honored() {
+        let _g = clean_env();
+        let cases = [
+            ("ARLECCHINO_VINEFLOWER_VERSION", "vineflower", "1.10.1"),
+            ("ARLECCHINO_CFR_VERSION", "cfr", "0.151"),
+            ("ARLECCHINO_PROCYON_VERSION", "procyon", "v0.5.36"),
+            ("ARLECCHINO_JADX_VERSION", "jadx", "v1.4.7"),
+        ];
+        for (var, name, override_) in cases {
+            std::env::set_var(var, override_);
+            assert_eq!(engine_tag(name), override_);
+            let url = release_api_url(engine_repo(name), &engine_tag(name));
+            assert!(url.ends_with(&format!("/releases/tags/{override_}")), "{url}");
+            std::env::remove_var(var);
+        }
+    }
+
+    // ── (b2) FreeJ2ME-plus pin ──────────────────────────────────────────────
+    #[test]
+    fn freej2me_plus_pinned_by_default() {
+        let _g = clean_env();
+        assert_eq!(freej2me_version(), "1.52");
+        assert_eq!(FREEJ2ME_REPO, "TASEmulators/freej2me-plus");
+        let url = release_api_url(FREEJ2ME_REPO, &freej2me_version());
+        assert_eq!(
+            url,
+            "https://api.github.com/repos/TASEmulators/freej2me-plus/releases/tags/1.52"
+        );
+        assert!(!url.contains("releases/latest"));
+    }
+
+    #[test]
+    fn freej2me_plus_env_override_is_honored() {
+        let _g = clean_env();
+        std::env::set_var("ARLECCHINO_FREEJ2ME_PLUS_VERSION", "1.51");
+        assert_eq!(freej2me_version(), "1.51");
+        let url = release_api_url(FREEJ2ME_REPO, &freej2me_version());
+        std::env::remove_var("ARLECCHINO_FREEJ2ME_PLUS_VERSION");
+        assert!(url.ends_with("/releases/tags/1.51"), "{url}");
+    }
+
+    #[test]
+    fn freej2me_plus_asset_predicate() {
+        // the jar bundle of the pinned tag must match; the native libretro core must not
+        assert!(freej2me_asset_pred("freej2me-v1.52.zip"));
+        assert!(!freej2me_asset_pred("freej2me_libretro-v1.52.zip"));
+        assert!(!freej2me_asset_pred("freej2me_libretro.info"));
+        // both frontends are extracted from the bundle
+        assert_eq!(FREEJ2ME_JARS, &["freej2me.jar", "freej2me-lr.jar"]);
+    }
+
+    // ── (c) GITHUB_TOKEN -> Authorization header ────────────────────────────
+    #[test]
+    fn no_token_means_anonymous() {
+        let _g = clean_env();
+        let req = gh_request("https://api.github.com/x", Duration::from_secs(1));
+        assert!(req.header("Authorization").is_none());
+        assert_eq!(req.header("User-Agent"), Some("arlecchino-setup"));
+    }
+
+    #[test]
+    fn github_token_adds_bearer_header() {
+        let _g = clean_env();
+        std::env::set_var("GITHUB_TOKEN", "ghp_secret123");
+        let req = gh_request("https://api.github.com/x", Duration::from_secs(1));
+        std::env::remove_var("GITHUB_TOKEN");
+        assert_eq!(req.header("Authorization"), Some("Bearer ghp_secret123"));
+    }
+
+    #[test]
+    fn gh_token_alias_also_works() {
+        let _g = clean_env();
+        std::env::set_var("GH_TOKEN", "gho_alias456");
+        let req = gh_request("https://api.github.com/x", Duration::from_secs(1));
+        std::env::remove_var("GH_TOKEN");
+        assert_eq!(req.header("Authorization"), Some("Bearer gho_alias456"));
+    }
+
+    /// The header is actually attached to the request that goes out: `gh_request`
+    /// is the single construction point behind both http_get_json and download, so
+    /// this covers the real request without any network I/O.
+    #[test]
+    fn token_header_reaches_http_request() {
+        let _g = clean_env();
+        std::env::set_var("GITHUB_TOKEN", "ghp_zzz");
+        let url = release_api_url("leibnitz27/cfr", &engine_tag("cfr"));
+        let req = gh_request(&url, Duration::from_secs(1));
+        std::env::remove_var("GITHUB_TOKEN");
+        assert_eq!(req.header("Authorization"), Some("Bearer ghp_zzz"));
+        assert!(req.url().ends_with("/releases/tags/0.152"), "{}", req.url());
+    }
 }
