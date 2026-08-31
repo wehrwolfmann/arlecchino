@@ -442,6 +442,34 @@ pub fn run_headless_midp_rt(
     midp_rt: Option<&str>,
     instrument: bool,
 ) -> Result<HeadlessResult, String> {
+    run_headless_midp_rt_sized(
+        jar,
+        out_dir,
+        inputs,
+        opts,
+        midp_rt,
+        instrument,
+        Some((opts.width, opts.height)),
+    )
+}
+
+/// Same as [`run_headless_midp_rt`], but the device size is given explicitly
+/// instead of being taken from `opts`.
+///
+/// `size == None` passes NO `--resizableDevice` to midp-rt, so the emulator keeps
+/// its own device default (176x220).  That is what the Python original does for
+/// `arlecchino run --headless` without `--size`: there `width`/`height` stay
+/// `None` all the way down.  `RunOpts` cannot express "unset" (difftest always
+/// has a concrete -W/-H), hence the separate entry point.
+pub fn run_headless_midp_rt_sized(
+    jar: &Path,
+    out_dir: &Path,
+    inputs: Option<&[InputEvent]>,
+    opts: &RunOpts,
+    midp_rt: Option<&str>,
+    instrument: bool,
+    size: Option<(i64, i64)>,
+) -> Result<HeadlessResult, String> {
     let rt = match find_midp_rt(midp_rt, None) {
         Some(p) => p,
         None => return Err(missing_hint(&[], None)),
@@ -481,8 +509,8 @@ pub fn run_headless_midp_rt(
             boot_wait_ms: (opts.boot_wait_s * 1000.0) as i64,
             inputs_file,
             rms_dir: Some(rms.clone()),
-            width: Some(opts.width),
-            height: Some(opts.height),
+            width: size.map(|(w, _)| w),
+            height: size.map(|(_, h)| h),
             instrument,
             home_dir: Some(home),
         },
@@ -670,5 +698,35 @@ mod tests {
         assert_eq!(midlet1_class(&a).as_deref(), Some("com.x.Main"));
         let bad = fold_manifest_lines("MIDlet-1: Game, /i.png\n");
         assert_eq!(midlet1_class(&bad), None);
+    }
+
+    /// `run --headless` without `--size` must leave the device size UNSET, so
+    /// midp-rt keeps its own default (176x220) like the Python original does.
+    /// Forcing 240x320 changed every frame and its sha256.
+    #[test]
+    fn headless_argv_omits_device_size_when_unset() {
+        let base = HeadlessArgvOpts {
+            frames_dir: PathBuf::from("/out"),
+            frames: 4,
+            period_ms: 100,
+            boot_wait_ms: 2000,
+            inputs_file: None,
+            rms_dir: None,
+            width: None,
+            height: None,
+            instrument: true,
+            home_dir: None,
+        };
+        let argv = build_headless_argv(Path::new("/g.jar"), Path::new("/midp-rt.jar"), &base);
+        assert!(!argv.iter().any(|a| a == "--resizableDevice"), "{argv:?}");
+
+        let sized = HeadlessArgvOpts {
+            width: Some(240),
+            height: Some(320),
+            ..base
+        };
+        let argv = build_headless_argv(Path::new("/g.jar"), Path::new("/midp-rt.jar"), &sized);
+        let i = argv.iter().position(|a| a == "--resizableDevice").expect("flag");
+        assert_eq!(&argv[i + 1..i + 3], ["240".to_string(), "320".to_string()]);
     }
 }

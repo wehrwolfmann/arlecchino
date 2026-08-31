@@ -927,18 +927,28 @@ fn cmd_run(a: &RunArgs) -> i32 {
             max_frames: a.frames,
             frame_period_ms: a.period_ms,
             boot_wait_s: a.boot_wait,
+            // only used for the run timeout here; the device size is passed
+            // separately below so that "no --size" stays unset (see `size`).
             width: width.unwrap_or(crate::diffrun::DEFAULT_W),
             height: height.unwrap_or(crate::diffrun::DEFAULT_H),
             rms_dir,
             deterministic_capture: false,
         };
-        let res = match midprun::run_headless_midp_rt(
+        // No --size => no --resizableDevice => midp-rt's own device default
+        // (176x220), exactly as in the Python original.  Forcing 240x320 here
+        // changed every captured frame and its sha256.
+        let size = match (width, height) {
+            (Some(w), Some(h)) => Some((w, h)),
+            _ => None,
+        };
+        let res = match midprun::run_headless_midp_rt_sized(
             &game,
             &out,
             inputs.as_deref(),
             &opts,
             Some(&midp_rt.to_string_lossy()),
             !a.no_instrument,
+            size,
         ) {
             Ok(r) => r,
             Err(e) => {
