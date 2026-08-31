@@ -27,6 +27,7 @@ pub mod emulate;
 pub mod fixedclock;
 pub mod i18n;
 pub mod metrics;
+pub mod midp_stub;
 pub mod midprun;
 pub mod normalize;
 pub mod permethod;

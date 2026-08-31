@@ -10,6 +10,7 @@
 //! `maybe_rename` logs and returns the original jar so the caller can fall back.
 
 use crate::config::engines_root_default;
+use crate::midp_stub;
 use crate::util::{self, PATHSEP};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -260,7 +261,35 @@ pub fn has_member_collisions(jar: &Path) -> bool {
     false
 }
 
+/// The classpath the renamer's reflection RESOLVER sees (4th argv to the helper).
+///
+/// Always prepends the generated clean-room MIDP/CLDC stub (Stage Э8) when present, so
+/// `jdkResolvable` / `jdkDeclaresMethod` resolve `javax.microedition.*` contracts
+/// PRECISELY and lock genuine framework callbacks.  The caller's `framework_cp` (e.g.
+/// an auto FreeJ2ME jar that is also used for compilation) is appended too,
+/// de-duplicated — but is no longer REQUIRED for correct locking.  If neither the stub
+/// nor `framework_cp` is available, the helper falls back to its `MIDP_CALLBACKS`
+/// denylist (offline-safe).
+///
+/// The stub is generated on demand: `setup` normally has it ready, but a first run on a
+/// fresh machine must get the precise path too.
+pub fn resolver_classpath(framework_cp: Option<&str>) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(stub) = midp_stub::ensure_stub() {
+        parts.push(stub.to_string_lossy().into_owned());
+    }
+    for p in framework_cp.unwrap_or("").split(PATHSEP) {
+        if !p.is_empty() && !parts.iter().any(|q| q == p) {
+            parts.push(p.to_string());
+        }
+    }
+    parts.join(PATHSEP)
+}
+
 /// Invoke the ASM helper: rewrite `jar` -> `out_jar`, writing `mapping`.
+///
+/// The resolver classpath (the generated MIDP/CLDC stub + any `framework_cp`) lets the
+/// helper RESOLVE external supertypes so it locks genuine MIDP overrides precisely.
 ///
 /// `flatten` (OPT-IN): pass the helper's 5th `flatten` argv so it ALSO moves every
 /// in-jar TYPE into the default (unnamed) package — letting a named-package class name
@@ -297,7 +326,7 @@ pub fn run_renamer(
         jar.to_string_lossy().into_owned(),
         out_jar.to_string_lossy().into_owned(),
         mapping.to_string_lossy().into_owned(),
-        framework_cp.unwrap_or("").to_string(),
+        resolver_classpath(framework_cp),
     ];
     if flatten {
         argv.push("flatten".into());
