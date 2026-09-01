@@ -81,14 +81,45 @@ Downloads **Vineflower, CFR, Procyon, jadx** (plus **JD-Core, Jode, Fernflower a
 Dava**) from their GitHub releases and builds or fetches **FreeJ2ME** into
 `~/.arlecchino/engines/`. It also downloads **ASM** (`org.ow2.asm`, BSD-3-Clause) from
 Maven Central into `~/.arlecchino/engines/asm/` and compiles the bytecode
-member-renamer helper against it. Each tool keeps its own license; nothing is vendored
-in this repo.
+member-renamer helper against it.
+
+It also **generates** a **clean-room MIDP 2.0 / CLDC 1.1 API stub** — `javac`-compiling
+public `javax.microedition.*` signatures (ABI only, empty or throwing bodies) into
+`~/.arlecchino/midp-stub.jar` — which is always placed on the renamer's resolver
+classpath so framework callbacks lock **precisely**, degrading to the offline denylist
+if `javac` is unavailable. Each tool keeps its own license; nothing — including the
+MIDP stub — is downloaded or vendored in this repo.
+
+#### Reproducibility — pinned engine versions
 
 Every engine is **pinned to an exact release tag** — the download asks for
 `releases/tags/<tag>`, never `releases/latest`, so an upstream release cannot silently
-shift the headline metric. Override a pin with `ARLECCHINO_<ENGINE>_VERSION`
-(`ARLECCHINO_FREEJ2ME_PLUS_VERSION` for the emulator). Set `GITHUB_TOKEN` / `GH_TOKEN`
-to lift the anonymous 60 req/h GitHub API rate limit.
+shift the headline metric.
+
+| engine | pinned tag | asset | ENV override |
+|---|---|---|---|
+| Vineflower | `1.12.0` | `vineflower-1.12.0.jar` | `ARLECCHINO_VINEFLOWER_VERSION` |
+| CFR | `0.152` | `cfr-0.152.jar` | `ARLECCHINO_CFR_VERSION` |
+| Procyon | `v0.6.0` | `procyon-decompiler-0.6.0.jar` | `ARLECCHINO_PROCYON_VERSION` |
+| jadx | `v1.5.5` | `jadx-1.5.5.zip` (`bin/jadx`) | `ARLECCHINO_JADX_VERSION` |
+| JD-Core | `jd-cli-1.3.0-beta-1` | `jd-cli-…-dist.zip` | `ARLECCHINO_JD_CLI_VERSION` |
+| ASM | `9.7` | Maven Central | `ARLECCHINO_ASM_VERSION` |
+| FreeJ2ME-plus | `1.52` | `freej2me-v1.52.zip` (`freej2me.jar` + `freej2me-lr.jar`) | `ARLECCHINO_FREEJ2ME_PLUS_VERSION` |
+
+Jode, Fernflower and Dava (Soot) are pinned by construction — they are single direct
+downloads whose version is part of the URL, so they have no ENV override. jd-cli's
+newest release is a beta; the pin freezes the one this port was measured against rather
+than following wherever `releases/latest` happens to point.
+
+Set **`GITHUB_TOKEN`** (or `GH_TOKEN`) and `setup` sends it as an
+`Authorization: Bearer` header, lifting the anonymous 60 req/h GitHub API rate limit
+(optional — anonymous still works). Downloads degrade gracefully when offline.
+
+> The historical **712 → 2** headline (below) was originally measured with a **local
+> CFR `0.153-SNAPSHOT`** development build bundled with jd-gui-duo. Upstream has no
+> `0.153` release, so `setup` pins the latest *released* CFR tag, `0.152`. A local
+> `arlecchino.local.toml` pointing at your own jars keeps using them and is unaffected
+> by `setup`'s downloads and pins.
 
 ### `decompile` — multi-decompile + best-of merge
 
@@ -104,7 +135,24 @@ to lift the anonymous 60 req/h GitHub API rate limit.
    `javac`'s batch **error-masking** and ranks the engines honestly.
 4. **Best-of merge:** per class, keeps the variant with the fewest isolated errors.
 5. **Auto-fix pass:** rewrites universal artifacts and keeps a fix only if it strictly
-   lowers the error count (never makes things worse).
+   lowers the error count (never makes things worse). Six passes, all in
+   `src/autofix.rs`:
+   * `fold_interface_static_init` — a constant interface whose `static {}` block assigns
+     its own blank finals becomes inline initialisers, *staying an interface* so every
+     `implements X` remains valid. Preferred over the class fallback on ties, for
+     whole-tree consistency;
+   * `const_interface_to_class` — the fallback when folding cannot apply;
+   * `scratch_temp_dead_array_type` — a synthetic `varNNNNN` declared as one array type
+     but dead-stored as another; the dead declaration is widened to `Object`;
+   * `resolve_unrepresentable_casts` — recovers the cast type behind Vineflower's
+     `(<unrepresentable>)` from a sibling decompiler that did name it;
+   * `duplicate_imports` — dedup;
+   * `illegal_static_local` — strips `static` from a local declaration.
+
+   Every pass scans a **length-preserving masked view** of the source in which string
+   literals, char literals and comments are blanked, so a `{`, `}`, `;` or keyword
+   hiding inside one cannot move a block boundary or trigger a spurious edit
+   (`tests/autofix_mask.rs`).
 6. **Round-trip check:** recompiles the merge to `.class` and reports how many of the
    original classes are covered, plus a coarse member-count diff vs the original
    bytecode.
@@ -114,10 +162,60 @@ to lift the anonymous 60 req/h GitHub API rate limit.
    itself reports is already printed before it.
 8. Writes `merged/`, `report.md`, `report.json`, and per-engine trees under `-o`.
 
-`decompile --semdiff` adds a **semantic round-trip**: per method, the symbolic
-reference sets of the original and the recompiled bytecode are compared (owner
-dropped, `StringBuffer`/`StringBuilder` unified, renamer mapping reconciled), so an
-auto-fix that silently changed semantics is flagged even when member counts match.
+`--deobf` is **partial** and heuristic: it annotates classes in `merged/` with their
+likely MIDP role and emits a separate `jadx --deobf` tree beside it. It does not recover
+names.
+
+`--per-method` is **experimental** and off by default. On the reference game the
+cross-engine auto-fixes resolve the residuals more reliably than whole-method splicing —
+engines disagree on local and field names, so a strict-improvement splice rarely lands.
+It also carries one deliberate, measured divergence from the reference implementation:
+methods are visited in key order rather than source order, which on that jar finds two
+splices and reaches an isolated sum of 3 where source order finds one and stops at 4.
+
+### `--semdiff` — semantic round-trip
+
+The plain round-trip check proves only **coverage** (every original class produced a
+compiled one) and **coarse counts** (members and methods per `javap -p`). An auto-fix
+can change *semantics* without touching either — above all the three that rewrite
+constructs sitting next to behaviour: the dead-array widening can flip `new int[]` to
+`new char[]`, the static-block fold re-encodes `<clinit>`, and interface→class flips
+call sites from `invokeinterface` to `invokevirtual`.
+
+`decompile --semdiff` disassembles the original class (from the renamed jar — the
+canonical API the whole pipeline already uses) and the recompiled one, method by method,
+normalises the differences a decompile+recompile round-trip legitimately produces, and
+**flags** methods whose normalised set of symbolic references differs in substance. It
+never changes the merge rules.
+
+**Why a set of symbolic references and not the opcode stream?** A strict `javap -c`
+diff is hopelessly noisy: `javac` re-encodes decompiled source with different branch
+polarity (`if_icmpge` ↔ `if_icmplt; return`), different local-variable slot numbers,
+different `dup` / `x++` idioms, and elided re-loads — none of which change behaviour.
+Calibrating a line-wise diff on the known-good reference merge produced hundreds of
+false differences.
+
+The signal that is stable **and** false-positive-free uses these eight rules:
+
+| # | rule | why |
+|---|---|---|
+| N1 | compare method to method, keyed by a signature with access modifiers stripped | a method present on only one side is flagged |
+| N2 | keep field/method refs as `(kind, name, descriptor)`, **drop the owner class** | `javac` re-resolves a member to whichever supertype *declares* it (`Field aa.H:I` vs `Field j.H:I`) — same member, cosmetic difference |
+| N3 | keep the invoke **kind** distinct (`Method` vs `InterfaceMethod`), owner still dropped | so interface→class is still caught, while interface re-resolution is not a false flag |
+| N4 | unify `StringBuffer` ↔ `StringBuilder` | decompilers emit modern `StringBuilder` for `+` that the obfuscated bytecode built with `StringBuffer` |
+| N5 | capture primitive array creation `newarray <type>` | exactly what the dead-array widening can change |
+| N6 | **exclude** `checkcast` / `instanceof` | decompilers insert redundant downcasts the original verified statically |
+| N7 | **exclude** the synthetic `getClass():Class` | `javac`'s null-check idiom, which decompiled source does not reproduce |
+| N8 | reconcile renamed members through `mapping.txt` (reverse map `newName → oldName`) | a member the renamer renamed must not look like a semantic change |
+
+**Calibration.** With N1–N8 the known-good 712→2 reference merge yields **zero** false
+flags across all **31** cleanly recompiled classes — including the three the merge did
+auto-fix (a dead scratch array, a folded constant interface, a resolved cast), none of
+which change semantics. Synthetic interface→class and array-element-type drifts *are*
+flagged (`tests/semdiff_javap.rs`).
+
+Everything degrades softly: with no `javap` the module reports `available = false` and
+does nothing; a class that did not recompile is skipped and reported, not flagged.
 
 `decompile --reject-semantic-drift` implies `--semdiff` and turns the report into a
 decision: every class the merge auto-fixed is re-verified, and an auto-fix whose
@@ -131,6 +229,15 @@ strictly lowers the error count" rule, never relax it. Reverted classes are list
 
 Thin wrapper around FreeJ2ME's AWT front-end:
 `java -jar freej2me.jar <midlet.jar> W H scale`.
+
+`setup` also installs **`freej2me-lr.jar`** — FreeJ2ME-plus's libretro (pipe)
+front-end. `src/diffrun.rs` drives it over plain stdin/stdout for **headless frame
+capture**: no window, no X server, no SDL, no native code. That is the foundation of
+the behavioural diff-testing harness; the protocol and its traps are documented in
+[`docs/headless-capture-protocol.md`](docs/headless-capture-protocol.md).
+
+**FreeJ2ME-plus is GPLv3** and is only ever run as a separate process — never linked,
+never vendored.
 
 ### `run` — run the MIDlet in midp-rt
 
@@ -156,6 +263,15 @@ hand with `cd midp-rt && ./build.sh`. The jar is then looked up in this order:
    `~/Projects/arlecchino-midp-rt`.
 
 If none of these hit, the command prints every path it checked and how to fix it.
+
+`arlecchino difftest --engine midp-rt` runs the behavioural diff through midp-rt instead
+of FreeJ2ME-plus — a second, independent reference engine. On one machine its rendering
+is fully deterministic: on the reference game, original versus rebuild came out at
+**Jaccard 1.00 and 100 % frame-by-frame in both the baseline and the cross comparison**,
+where FreeJ2ME-plus gives 0.86 / 97 %. That determinism does **not** currently extend to
+`--fixed-clock` on this engine — see
+[`docs/determinism-fixed-clock.md`](docs/determinism-fixed-clock.md) for the measured
+boundary.
 
 ### `difftest` — behavioural diff (does the rebuilt jar still behave the same?)
 
@@ -195,7 +311,17 @@ the verdict only fails on signals stronger than that noise.
   `FIRE` (= `SOFT3`, the middle soft key), `SOFT_LEFT`, `SOFT_RIGHT`, `CLR` — or a raw
   integer joypad index of the libretro front-end.
 * `action` — `press`, `release` or `tap` (a press immediately followed by a release).
-  Defaults to `press`.
+  Defaults to `press`. An unknown key name is a hard error, not a dropped event.
+
+Both engines take the same format, but two things differ under `--engine midp-rt`,
+because the replay is done by the runtime itself rather than by a libretro joypad:
+
+* `FIRE` / `SELECT` / `SOFT3` map onto the MicroEmulator device's **SELECT** button (the
+  middle key, game action FIRE), and `CLR` maps onto **DELETE**;
+* a **raw integer** in `key` means a **MIDP keyCode** (e.g. `53` = `NUM5`), *not* a
+  libretro joypad index. A script that hard-codes joypad indices is therefore silently
+  reinterpreted when run through midp-rt — use the symbolic names in any script meant
+  for both engines.
 
 ## GUI
 
@@ -253,6 +379,46 @@ metric. It also auto-adds a **MIDP stub** (FreeJ2ME's jar) to the classpath so
 `javax.microedition.*` resolves; override with `-cp`, `--midp-stub`, or
 `--no-midp-stub`.
 
+A naive whole-tree compile of a badly obfuscated jar can therefore report a deceptively
+tiny number. An early prototype of this tool reported "1 error" on the reference game —
+that was a `javac` masking artifact in which one interface error hid roughly seven
+hundred real ones. The figures below are the honest unmasked isolated counts, and on
+them the merge genuinely beats every single engine.
+
+## Example — measured on an obfuscated J2ME game jar
+
+⚠️ **Conditions.** These numbers were measured in June 2026 on `Allods_1_2_240x320.jar`
+with a **four-engine local configuration** whose CFR was the unreleased
+`0.153-SNAPSHOT` development build (see the note under `setup`). They are the project's
+headline result and are quoted here as such. They are **not** the live gate — that is
+`regress/expected.txt`, measured later with six pinned engines and cross-checked jar for
+jar against the reference implementation, and it reports different (equally valid)
+figures for the same jar. Do not read the two as contradicting each other; see
+[`docs/history-and-decisions.md`](docs/history-and-decisions.md).
+
+Per engine, **member-renamer OFF**, isolated errors (lower is better):
+
+| engine | classes | isolated errors |
+|---|---|---|
+| cfr | 30 | 978 |
+| vineflower | 30 | 1053 |
+| jadx | 32 | 1066 |
+| procyon | 30 | 1183 |
+
+With the **member-renamer ON** (the default AUTO) every engine's raw count collapses —
+procyon 1183 → 1, cfr 978 → 16, vineflower 1053 → 11, jadx 1066 → 7.
+
+* **Best-of merge, renamer OFF** (`--no-rename-members`): **712** — about 27 % fewer
+  than the best single engine, with 100 % round-trip class coverage. The bulk of those
+  712 are caused by ProGuard's descriptor-overloaded members.
+* **Best-of merge, renamer ON** (default): **2**, with **100 % (32/32)** round-trip
+  class coverage and the whole 31-class default-package tree compiling together.
+* **With `--flatten-packages`: 0** — see below.
+
+One finding worth naming: a field named like an in-jar type it references — e.g.
+`class j { int o; }` that uses `o.c` where `o` is also a type — shadows the type in
+source and yields **57 spurious `int cannot be dereferenced`** errors on its own.
+
 ## Bytecode member renamer
 
 ProGuard reuses the **same member name with different descriptors** — legal in JVM
@@ -263,15 +429,55 @@ site doesn't know which overloaded declaration it binds to. So the renamer works
 compiled by `setup`) loads every class, detects the source-illegal collisions (duplicate
 field names; return-type-only method overloads), unions override groups so virtual
 dispatch is preserved, **locks** members bound by an external (MIDP/JDK) contract, and
-rewrites all references (including shared NameAndType constant-pool entries). It also
-fixes **type-name shadowing** (a field named like an in-jar type it references) and
-**constant-interface-inherited shadowing**.
+rewrites all references (including shared NameAndType constant-pool entries).
+
+**The new-name scheme.** Within a collision group the first occurrence keeps its name;
+each other collider becomes `<orig>_<tag>`, where `<tag>` is the first 8 hex digits of an
+FNV-1a-64 hash of the member's **full descriptor** (a numeric `_2`, `_3`, … bump follows
+only if that is still taken). Only actual colliders are renamed. A `mapping.txt`
+(`owner.oldName desc -> newName`) is written next to the renamed jar and is what
+`--semdiff` reconciles against.
+
+**Locking.** A member bound by an external contract — a MIDP or JDK callback the runtime
+calls by name — must never be renamed. If a locked method collides with another, the
+**other** collider is renamed instead. Resolution is done precisely, by reflecting
+against the generated clean-room MIDP stub; a hard-coded denylist of the well-known
+callbacks is kept **only** as an offline fallback, because blanket-locking would prevent
+fixing genuine return-type collisions.
+
+**Measured on the reference game:** 32 classes → **355 field renames and 50 method
+renames** (291 descriptor overloads, 56 type shadows, 8 constant-interface shadows). The
+renamed jar verifies — all 32 classes load through the JVM verifier with 0 failures — has
+**zero** remaining duplicate-field or return-type collisions, and **no MIDP callback was
+renamed** (verified: `GameMIDlet.startApp/pauseApp/destroyApp` and the canvas class's
+`run/showNotify/hideNotify/keyPressed/keyReleased` are all untouched).
+
+### Type-name-shadow field rename
+
+`X.c` where `X` is both a field of the current class and an in-jar type parses as
+`(this.X).c` — the field shadows the type, and the compiler then complains that a
+primitive cannot be dereferenced. The renamer renames the field `C.X` only when an
+in-jar type has simple name `X` **and** `C` actually references that type's internal
+name in its bytecode, so a coincidental name match is left alone. On the reference game
+this one rule clears all **57** `int cannot be dereferenced` errors (41 in class `j`,
+15 in `e`, 1 in `i`).
+
+### Constant-interface-inherited-shadow field rename
+
+An instance field that shadows a constant inherited from an implemented constant
+interface makes every unqualified use ambiguous. The renamer renames the colliding
+**constant** in the interface — a read-only, dispatch-irrelevant member — rather than the
+instance field. On the reference game this clears the remaining ambiguous-reference
+errors.
 
 ### `--flatten-packages` (opt-in)
 
 A named-package class cannot name a type that lives in the **default (unnamed)**
-package — a Java language rule, not a decompiler gap, so a jar that mixes the two keeps
-an irreducible residual of `cannot find symbol` errors no renamer can remove.
+package — a Java language rule (**JLS §6.5 / §7.4.3**), not a decompiler gap, so a jar
+that mixes the two keeps an irreducible residual of `cannot find symbol` errors no
+renamer can remove. On the reference game that residual is exactly the honest **2**: both
+errors are in `Container/GameMIDlet`, and both are the same problem — it lives in package
+`Container` but references default-package types.
 `--flatten-packages` takes the porting decision a manual port takes: the same ASM pass
 also remaps **types**, moving every in-jar class into the default package. All type
 references are rewritten consistently (extends/implements, descriptors,
@@ -282,8 +488,33 @@ simple names keep the first and get a stable `_<8hex>` suffix.
 
 Caveat: the pass rewrites type *references*, not string **constants** — a jar that
 resolves classes from a package-qualified `Class.forName("pkg.Foo")` **literal** would
-need those literals updated by hand. Without the flag the renamed jar is bit-for-bit
-what it was, so the default path is unaffected.
+need those literals updated by hand. That was checked on the reference game before the
+flag was trusted there: it has **no** such `forName` literals (its only
+`Container/GameMIDlet` occurrences are type descriptors) and it loads resources by
+**path** (`getResourceAsStream("/res/…")`), not by class name — so for that jar the
+flatten is a complete, round-trip-safe fix. Check the same two things before relying on
+it elsewhere.
+
+**Result on the reference game:** `--flatten-packages` moves `Container.GameMIDlet` into
+the default package and its 2 cross-package errors vanish, removing the entire
+irreducible residual; round-trip coverage stays 100 %. Without the flag the renamed jar
+is **bit-for-bit** what it was, so the default path is unaffected.
+
+### What the numbers do and do not prove
+
+The isolated count is the honest, unmaskable per-class metric: each class compiled alone
+against the **renamed** jar plus the MIDP stub as its API. On the reference game it was
+reproduced by an independent isolated re-measure of all 32 classes (31 clean,
+`GameMIDlet` = 2), and the 31 default-package classes also compile **together** as a tree
+(whole-tree errors = 2, i.e. only `GameMIDlet`).
+
+Round-trip coverage (100 %, 32/32) is a **structural smoke test**: it proves every class
+compiles against the renamed jar's API, with classes that failed to recompile seeded
+from the original bytecode so their dependents still resolve. It is **not** behavioural
+equivalence. Behaviour is a separate question, answered by `difftest` — and it was
+answered: the rebuilt jar reproduces the original's screen states exactly on the
+reference game. See
+[`docs/behavioural-verification.md`](docs/behavioural-verification.md).
 
 ## Regression gate
 
@@ -301,6 +532,21 @@ which is not part of the gate), and a mismatch is a non-zero exit. The measureme
 entries — because those numbers were cross-checked jar for jar against the Python
 edition, which cannot run those two. Keep that file in sync with
 `assets/engines.default.toml` when an engine's invocation changes.
+
+## Tests
+
+`cargo test`. The suite pins behaviour rather than adding any; it needs nothing beyond
+what `arlecchino setup` already installs, and every test whose prerequisites are missing
+prints `SKIP: <reason>` and returns green instead of failing. What each file covers, and
+what skips where, is in [`tests/README.md`](tests/README.md).
+
+## Documentation
+
+[`docs/`](docs/README.md) holds the research reports, measurements and decision records
+behind the claims above — the capture protocol that had to be reverse-engineered, the
+determinism boundary and its regression history, where the vendored MIDP runtime came
+from and under which licences, the behavioural validation numbers, and the alternatives
+that were examined and rejected. None of it is derivable from the source.
 
 ## Configuration
 

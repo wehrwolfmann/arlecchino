@@ -19,6 +19,12 @@ its own license and not bundled in this repository:
                       helper against them; ASM is not vendored in this repository.
 `arlecchino setup` downloads/builds these into ~/.arlecchino/engines on request.
 
+The bytecode member-renamer resolves framework callbacks against a clean-room
+MIDP 2.0 (JSR-118) / CLDC 1.1 (JSR-139) API stub that `arlecchino setup` GENERATES
+(src/midp_stub.rs): only PUBLIC class/interface and method signatures (ABI) are
+emitted, with empty/throwing bodies; no reference-implementation source, and no
+third-party MIDP/CLDC jar, is copied, downloaded, or vendored.
+
 The experimental --per-method merge uses a small built-in Java signature scanner;
 no third-party parser is required.
 
