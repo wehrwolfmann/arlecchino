@@ -303,7 +303,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
     for c in &all_classes {
         let mut clean = Vec::new();
         let mut errors: Vec<(String, Option<i64>)> = Vec::new();
-        for (n, d) in &data {
+        for (n, d) in core::all_in_config_order(&data) {
             if d.files.contains_key(c) {
                 let e = d.per.get(c).copied();
                 if e.unwrap_or(0) == 0 {

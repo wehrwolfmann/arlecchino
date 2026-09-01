@@ -35,6 +35,15 @@ pub struct EngineData {
     pub order: usize,
 }
 
+/// EVERY engine, in CONFIG order — the reference walks its insertion-ordered dict,
+/// so anything that reports per-engine results (the per-class report) must walk the
+/// same order and not the map's alphabetical one.
+pub fn all_in_config_order(engine_data: &BTreeMap<String, EngineData>) -> Vec<(&String, &EngineData)> {
+    let mut v: Vec<(&String, &EngineData)> = engine_data.iter().collect();
+    v.sort_by_key(|(_, d)| d.order);
+    v
+}
+
 /// Engine names of type `names`, in CONFIG order (the reference's dict order).
 pub fn names_in_config_order(engine_data: &BTreeMap<String, EngineData>) -> Vec<&String> {
     let mut v: Vec<(usize, &String)> = engine_data
