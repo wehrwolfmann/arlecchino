@@ -13,3 +13,6 @@ rms/
 
 # user-specific local config
 arlecchino.local.toml
+
+# javac writes an @argfile into the cwd when the command line gets too long
+javac.*.args
