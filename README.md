@@ -56,7 +56,7 @@ arlecchino setup     [--engines-root DIR] [--only vineflower,cfr,…]
                      [--freej2me-prebuilt P | --freej2me-src DIR] [--no-freej2me]
 arlecchino decompile <jar> [-o OUT] [-cp DEPS] [--config C] [-j N]
                      [--midp-stub JAR | --no-midp-stub]
-                     [--rename-members | --no-rename-members]
+                     [--rename-members | --no-rename-members] [--flatten-packages]
                      [--per-method] [--deobf] [--no-autofix] [--no-roundtrip]
                      [--semdiff] [--reject-semantic-drift]
 arlecchino emulate   <jar> [--freej2me P] [-W 176] [-H 220] [-s 2]
@@ -237,6 +237,41 @@ dispatch is preserved, **locks** members bound by an external (MIDP/JDK) contrac
 rewrites all references (including shared NameAndType constant-pool entries). It also
 fixes **type-name shadowing** (a field named like an in-jar type it references) and
 **constant-interface-inherited shadowing**.
+
+### `--flatten-packages` (opt-in)
+
+A named-package class cannot name a type that lives in the **default (unnamed)**
+package — a Java language rule, not a decompiler gap, so a jar that mixes the two keeps
+an irreducible residual of `cannot find symbol` errors no renamer can remove.
+`--flatten-packages` takes the porting decision a manual port takes: the same ASM pass
+also remaps **types**, moving every in-jar class into the default package. All type
+references are rewritten consistently (extends/implements, descriptors,
+`NEW`/`CHECKCAST`/`INSTANCEOF`, field and method owners, `LDC` class constants,
+signatures), each class's **jar entry path follows its new name**, and the manifest
+entry-class attribute (`MIDlet-1:`, `Main-Class:`) is rewritten with it. Colliding
+simple names keep the first and get a stable `_<8hex>` suffix.
+
+Caveat: the pass rewrites type *references*, not string **constants** — a jar that
+resolves classes from a package-qualified `Class.forName("pkg.Foo")` **literal** would
+need those literals updated by hand. Without the flag the renamed jar is bit-for-bit
+what it was, so the default path is unaffected.
+
+## Regression gate
+
+`regress/expected.txt` holds the per-jar merge numbers of the reference corpus, and
+`regress/run.sh` re-measures them:
+
+```sh
+cargo build --release
+regress/run.sh                 # or: regress/run.sh /path/to/corpus
+```
+
+Both numbers of the `RESULT merged:` line are compared, the run stops as soon as that
+line is out, and a mismatch is a non-zero exit. The measurement uses
+`regress/engines.6.toml` — the shipped default engine set minus the two `kind = "class"`
+entries — because those numbers were cross-checked jar for jar against the Python
+edition, which cannot run those two. Keep that file in sync with
+`assets/engines.default.toml` when an engine's invocation changes.
 
 ## Configuration
 

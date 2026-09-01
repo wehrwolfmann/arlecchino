@@ -1,0 +1,36 @@
+# Arlecchino regression gate — expected merge numbers.
+#
+# Format:  <jar-stem>  <isolated-sum>  <whole-tree-errors>
+# Both numbers come from the "RESULT merged: isolated-sum=N, whole-tree errors=M"
+# line of `arlecchino decompile`.  Run `regress/run.sh` to re-measure and compare.
+#
+# HOW THESE WERE MEASURED (2026-09-01)
+#   corpus     ~/Загрузки/J2ME — the 11 jars listed below
+#   config     regress/engines.6.toml (six engines; jode and fernflower excluded —
+#              see the header of that file)
+#   renamer    auto (default), i.e. ON for every jar that has source-illegal
+#              member collisions; ASM helper compiled by `arlecchino setup --only asm`
+#   MIDP stub  auto — FreeJ2ME-plus 1.52 freej2me.jar from the engines root
+#   engines    the pinned tags of assets/engines.default.toml
+#   JDK        javac 17.0.20
+#   binary     2abd05f1aecc390553f1bdfb5f68a13ca5788623 (cargo build --release)
+#
+# CROSS-CHECKED against the Python edition (arlecchino-python @ b6d06c0) on the same
+# day, same corpus, same config, each edition in its own isolated $HOME / engines
+# root with its own ASM helper build: all 11 jars agreed on BOTH numbers.  These are
+# therefore the reference values for the Rust edition, replacing the June-2026
+# four-engine list that used to live in the Python tree.
+#
+# Dava (Soot) fails on every jar of this corpus with an internal NPE and contributes
+# nothing; that is expected and identical on both editions.
+Allods_1_2_240x320 4 1
+Bruce_Lee_-_Iron_Fist_2D 1 1
+cyber_blood_rus 43 6
+Elven_Chronicles_v1_0_5ru_240x320 327 28
+Flitzer_w900_rus 16 16
+Get_Rich_or_Die_Tryin_ru_240x320 114 60
+GOTHIC-3 7 7
+Liftboy_240x320_rus 6 4
+liquidator_rus 128 5
+Masha_i_Medved_240x320 0 0
+Silent_Storm_240x320 18 12

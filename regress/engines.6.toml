@@ -1,0 +1,68 @@
+# Cross-edition reference engine set for the regression gate (regress/expected.txt).
+#
+# This is assets/engines.default.toml MINUS the two `kind = "class"` entries (jode,
+# fernflower).  Those two are Rust-only: the Python edition's config reader rejects
+# `kind = "class"` and has no "unjar" normalizer, so a run that includes them is not
+# comparable across the two editions.  Everything left here is understood, byte for
+# byte the same way, by both.
+#
+# Keep this file in sync with assets/engines.default.toml whenever an engine's
+# invocation changes — the gate numbers are only meaningful against this exact set.
+
+engines_root = "~/.arlecchino/engines"
+
+[[engine]]
+name = "vineflower"
+type = "names"
+kind = "jar"
+path = "vineflower.jar"
+args = ["{jar}", "{out}"]
+
+[[engine]]
+name = "cfr"
+type = "names"
+kind = "jar"
+path = "cfr.jar"
+args = ["{jar}", "--outputdir", "{out}",
+        "--renamedupmembers", "true", "--renameillegalidents", "true",
+        "--silent", "true"]
+
+[[engine]]
+name = "procyon"
+type = "names"
+kind = "jar"
+path = "procyon.jar"
+args = ["-jar", "{jar}", "-o", "{out}"]
+
+# jadx keeps the original short class names (a, b, ... o) but wraps default-package
+# classes in a `defpackage` package and renames *colliding* fields.  The "jadx"
+# normalizer un-wraps `defpackage` so its output merges with the canonical tree.
+[[engine]]
+name = "jadx"
+type = "names"
+kind = "tool"
+path = "jadx/bin/jadx"
+args = ["--no-res", "-d", "{out}", "{jar}"]
+sources_subdir = "sources"
+normalize = "jadx"
+
+# JD-Core, via the jd-cli command-line front-end.  `-od` writes a flat directory of
+# .java (default-package classes land at the top level, matching the other engines).
+[[engine]]
+name = "jd-core"
+type = "names"
+kind = "jar"
+path = "jd-cli.jar"
+args = ["{jar}", "-od", "{out}"]
+
+# Dava — the Soot decompiler back-end.  `-f dava` emits .java under `<out>/dava/src`.
+# Kept faithful to the paper; note Dava aborts on every jar of this corpus (a known
+# Soot NPE in LabeledBlockFinder on obfuscated bytecode), contributing no fragments.
+# It stays in the set so the gate exercises the "engine produced nothing" path.
+[[engine]]
+name = "dava"
+type = "names"
+kind = "jar"
+path = "soot.jar"
+args = ["-f", "dava", "-allow-phantom-refs", "-pp", "-d", "{out}", "-process-dir", "{jar}"]
+sources_subdir = "dava/src"
