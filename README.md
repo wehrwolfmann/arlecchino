@@ -168,6 +168,30 @@ the verdict only fails on signals stronger than that noise.
 * `--fixed-clock` — ASM-instrument the jar(s) with a virtual clock and a fixed-seeded
   RNG first, so replays become frame-identical.
 
+#### Input-script format
+
+`run --inputs` and `difftest --input` take a JSON array of events:
+
+```json
+[
+  {"t_ms": 4500, "key": "FIRE",  "action": "tap"},
+  {"t_ms": 6000, "key": "DOWN",  "action": "press"},
+  {"t_ms": 6300, "key": "DOWN",  "action": "release"},
+  {"t_ms": 7500, "key": "NUM5",  "action": "tap"}
+]
+```
+
+* `t_ms` — milliseconds from the **first captured frame** (i.e. from the end of
+  `--boot-wait`), not from JVM start. The array need not be sorted. Replay is best
+  effort against the wall clock: an event is injected before the first frame request
+  with `now >= t_ms`, so it is not frame-exact — `--fixed-clock` maps `t_ms` onto a
+  frame index instead and makes the MIDlet's own logic deterministic.
+* `key` — one of `UP DOWN LEFT RIGHT`, `NUM0`…`NUM9`, `STAR`, `POUND`,
+  `FIRE` (= `SOFT3`, the middle soft key), `SOFT_LEFT`, `SOFT_RIGHT`, `CLR` — or a raw
+  integer joypad index of the libretro front-end.
+* `action` — `press`, `release` or `tap` (a press immediately followed by a release).
+  Defaults to `press`.
+
 ## GUI
 
 `arlecchino-gui` is a small desktop panel (built with eframe/egui, steam_dark theme).
