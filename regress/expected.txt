@@ -23,6 +23,9 @@
 #
 # Dava (Soot) fails on every jar of this corpus with an internal NPE and contributes
 # nothing; that is expected and identical on both editions.
+#
+# Re-verified the same day by `regress/run.sh` (which runs with --no-metrics and lets
+# the round-trip finish): 11 jars checked, 0 mismatches.
 Allods_1_2_240x320 4 1
 Bruce_Lee_-_Iron_Fist_2D 1 1
 cyber_blood_rus 43 6

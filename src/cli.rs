@@ -3,6 +3,7 @@
 //!   arlecchino setup     [--engines-root DIR] [--only a,b] [--freej2me-prebuilt P]
 //!   arlecchino decompile <jar> [-o OUT] [-cp DEPS] [--config C] [-j N]
 //!                              [--per-method] [--deobf] [--no-autofix] [--no-roundtrip]
+//!                              [--no-metrics]
 //!   arlecchino emulate   <jar> [--freej2me P] [-W 176] [-H 220] [-s 2]
 //!
 //! Backward compatibility: `arlecchino <something.jar>` is treated as
@@ -167,6 +168,10 @@ struct DecompileArgs {
     no_autofix: bool,
     #[arg(long = "no-roundtrip")]
     no_roundtrip: bool,
+    /// skip the quality-metrics stage (it recompiles and cross-compares every class,
+    /// which costs minutes per jar and is reported after the merge result anyway)
+    #[arg(long = "no-metrics")]
+    no_metrics: bool,
     /// semantic round-trip check: flag methods whose symbolic reference set drifted
     #[arg(long = "semdiff")]
     semdiff: bool,
@@ -571,7 +576,7 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
     }
     // quality metrics (syntactic correctness / cross-decompiler agreement / behavioral)
     let mut metrics: Option<crate::metrics::Metrics> = None;
-    if let Some(md) = &merged_dir {
+    if let (Some(md), false) = (&merged_dir, a.no_metrics) {
         println!("\n== QUALITY METRICS ==");
         let m = crate::metrics::compute(
             &data,

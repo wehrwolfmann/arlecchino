@@ -58,6 +58,7 @@ arlecchino decompile <jar> [-o OUT] [-cp DEPS] [--config C] [-j N]
                      [--midp-stub JAR | --no-midp-stub]
                      [--rename-members | --no-rename-members] [--flatten-packages]
                      [--per-method] [--deobf] [--no-autofix] [--no-roundtrip]
+                     [--no-metrics]
                      [--semdiff] [--reject-semantic-drift]
 arlecchino emulate   <jar> [--freej2me P] [-W 176] [-H 220] [-s 2]
 arlecchino run       <jar|jad> [--midp-rt P] [--size WxH] [--rms-dir D]
@@ -107,7 +108,11 @@ to lift the anonymous 60 req/h GitHub API rate limit.
 6. **Round-trip check:** recompiles the merge to `.class` and reports how many of the
    original classes are covered, plus a coarse member-count diff vs the original
    bytecode.
-7. Writes `merged/`, `report.md`, `report.json`, and per-engine trees under `-o`.
+7. **Quality metrics:** syntactic correctness, cross-decompiler agreement and a
+   structural behavioural check. This stage recompiles and cross-compares every class
+   and costs minutes on a big jar — `--no-metrics` skips it; everything the merge
+   itself reports is already printed before it.
+8. Writes `merged/`, `report.md`, `report.json`, and per-engine trees under `-o`.
 
 `decompile --semdiff` adds a **semantic round-trip**: per method, the symbolic
 reference sets of the original and the recompiled bytecode are compared (owner
@@ -290,8 +295,8 @@ cargo build --release
 regress/run.sh                 # or: regress/run.sh /path/to/corpus
 ```
 
-Both numbers of the `RESULT merged:` line are compared, the run stops as soon as that
-line is out, and a mismatch is a non-zero exit. The measurement uses
+Both numbers of the `RESULT merged:` line are compared (the run uses `--no-metrics`,
+which is not part of the gate), and a mismatch is a non-zero exit. The measurement uses
 `regress/engines.6.toml` — the shipped default engine set minus the two `kind = "class"`
 entries — because those numbers were cross-checked jar for jar against the Python
 edition, which cannot run those two. Keep that file in sync with
