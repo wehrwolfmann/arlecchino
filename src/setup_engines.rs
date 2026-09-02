@@ -481,7 +481,7 @@ pub fn build_freej2me(src: &Path, dst: &Path) -> String {
             "-proc:none".into(),
             format!("@{}", lf.to_string_lossy()),
         ];
-        let _ = util::run_capture(&argv, None);
+        let _ = util::run_capture_in(&argv, None, Some(&src));
     }
     // step 2: everything except libretro + objectweb
     let rest = collect(&|r: &str| !r.starts_with("libretro/") && !r.starts_with("org/objectweb/"));
@@ -499,7 +499,7 @@ pub fn build_freej2me(src: &Path, dst: &Path) -> String {
         "utf-8".into(),
         format!("@{}", lf.to_string_lossy()),
     ];
-    let r = util::run_capture(&argv, None);
+    let r = util::run_capture_in(&argv, None, Some(&src));
 
     let n_cls = util::rglob_ext(&classes, "class").len();
     if n_cls == 0 {

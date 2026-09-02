@@ -117,7 +117,7 @@ pub fn compile_helper(root: Option<&Path>) -> String {
         outdir.to_string_lossy().into_owned(),
         src.to_string_lossy().into_owned(),
     ];
-    let r = util::run_capture(&argv, None);
+    let r = util::run_capture_in(&argv, None, Some(&outdir));
     if r.status != Some(0) || !helper_compiled(root) {
         let tail: String = r.stderr.chars().rev().take(500).collect::<String>().chars().rev().collect();
         return format!("FAILED javac: {tail}");

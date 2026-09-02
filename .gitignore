@@ -14,5 +14,8 @@ rms/
 # user-specific local config
 arlecchino.local.toml
 
-# javac writes an @argfile into the cwd when the command line gets too long
+# javac writes an @argfile into its cwd when the command line gets too long.
+# We now hand javac the output directory (util::run_capture_in), so these land
+# inside the output tree, not here — this rule only catches strays from older
+# binaries and from running javac by hand.
 javac.*.args

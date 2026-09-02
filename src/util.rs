@@ -28,6 +28,17 @@ impl RunResult {
 /// Run `argv`, capturing stdout+stderr, with an optional timeout (kills on expiry).
 /// Drains both pipes on background threads to avoid buffer deadlock.
 pub fn run_capture(argv: &[String], timeout: Option<Duration>) -> RunResult {
+    run_capture_in(argv, timeout, None)
+}
+
+/// Same, but runs the child in `cwd` instead of inheriting ours.
+///
+/// This matters for javac: when the command line outgrows the platform limit it
+/// writes a `javac.<timestamp>.args` file into the *current* directory and leaves
+/// it there.  Inheriting our cwd means littering whatever directory the user
+/// happened to launch us from; giving javac the output directory keeps the mess
+/// inside the tree we already own.
+pub fn run_capture_in(argv: &[String], timeout: Option<Duration>, cwd: Option<&Path>) -> RunResult {
     if argv.is_empty() {
         return RunResult {
             status: None,
@@ -42,6 +53,9 @@ pub fn run_capture(argv: &[String], timeout: Option<Duration>) -> RunResult {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {

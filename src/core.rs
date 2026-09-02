@@ -145,7 +145,8 @@ pub fn compile_dir(srcdir: &Path, classpath: Option<&str>) -> (i64, BTreeMap<Str
         cmd.push(cp.to_string());
     }
     cmd.push(format!("@{}", listf.to_string_lossy()));
-    let r = util::run_capture(&cmd, None);
+    // javac в srcdir: свой @argfile он положит туда же, а не в чужой каталог.
+    let r = util::run_capture_in(&cmd, None, Some(srcdir));
     let log = r.stderr;
     let per = count_errors_per(&log, srcdir);
     (per.values().sum(), per, log)
@@ -234,7 +235,7 @@ pub fn compile_file_isolated(java_file: &Path, api_classpath: &str, tmp_out: &Pa
         api_classpath.to_string(),
         java_file.to_string_lossy().into_owned(),
     ];
-    let r = util::run_capture(&argv, None);
+    let r = util::run_capture_in(&argv, None, Some(tmp_out));
     ERR_RE.find_iter(&r.stderr).count() as i64
 }
 
@@ -460,7 +461,7 @@ pub fn compile_best_effort(
             cp,
             format!("@{}", listf.to_string_lossy()),
         ];
-        let r = util::run_capture(&argv, None);
+        let r = util::run_capture_in(&argv, None, Some(srcdir));
         count_errors_per(&r.stderr, srcdir)
     };
 

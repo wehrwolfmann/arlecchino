@@ -26,6 +26,12 @@
 #
 # Re-verified the same day by `regress/run.sh` (which runs with --no-metrics and lets
 # the round-trip finish): 11 jars checked, 0 mismatches.
+#
+# RE-RUN 2026-09-02 with the Python tree renamed out of the way, as the last check
+# before deleting it: 11 jars checked, 0 mismatches, exit 0.  The Python edition is
+# gone from this machine (its full history is a bundle under ~/Projects/_архив/), so
+# these numbers can no longer be re-derived from it — they now stand on their own,
+# and regress/run.sh is the only thing that keeps them honest.
 Allods_1_2_240x320 4 1
 Bruce_Lee_-_Iron_Fist_2D 1 1
 cyber_blood_rus 43 6
