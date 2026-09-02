@@ -19,3 +19,6 @@ arlecchino.local.toml
 # inside the output tree, not here — this rule only catches strays from older
 # binaries and from running javac by hand.
 javac.*.args
+
+# Private corpus overlay for the regression gate (see regress/expected.txt)
+regress/expected.local.txt

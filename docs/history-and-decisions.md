@@ -233,12 +233,14 @@ measurement are set out in the README's example section.
 `regress/engines.6.toml`, the pinned released CFR 0.152, and a recorded JDK and binary
 revision — and cross-checked jar for jar against the reference implementation on the
 same day, same corpus, same configuration, each edition in its own isolated home and
-engine root. All eleven jars agreed on both numbers.
+engine root. All eleven jars agreed on both numbers — ten of them are listed in
+`regress/expected.txt`, the eleventh in the untracked local overlay beside it.
 
 The ten-jar corpus the plans refer to is `Allods`, `Bruce_Lee`, `Elven_Chronicles`,
-`Flitzer`, `GOTHIC-3`, `Get_Rich`, `Liftboy`, `Masha_i_Medved`, `Silent_Storm`,
-`cyber_blood_rus`. The jars themselves are **never committed** — they are supplied at
-run time.
+`Flitzer`, `GOTHIC-3`, `Get_Rich`, `Liftboy`, `Silent_Storm`,
+`cyber_blood_rus` — nine named here, plus one jar that is not ours to name in public
+(it is carried by the private overlay described in `regress/expected.txt`). The jars
+themselves are **never committed** — they are supplied at run time.
 
 ### Appendix: the configuration the headline was measured with
 

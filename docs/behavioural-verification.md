@@ -165,7 +165,7 @@ run_headless_midp_rt(jar, out, max_frames=30, frame_period_ms=100,
 | GOTHIC-3.JAR | ok | 30 | 11 | 30/30 | — |
 | Get_Rich_or_Die_Tryin_ru_240x320.jar | ok | 30 | 2 | 30/30 | — |
 | Liftboy_240x320_rus.jar | ok | 30 | 21 | 30/30 | — |
-| Masha_i_Medved_240x320.jar | ok | 30 | 7 | 30/30 | RecordStoreNotFoundException |
+| (private corpus jar) | ok | 30 | 7 | 30/30 | RecordStoreNotFoundException |
 | Silent_Storm_240x320.jar | ok | 30 | 2 | 30/30 | — |
 | cyber_blood_rus.jar | ok | 30 | 1 | 30/30 | — |
 
@@ -173,7 +173,7 @@ run_headless_midp_rt(jar, out, max_frames=30, frame_period_ms=100,
 
 - Visual spot-check of the frames: GOTHIC-3 — frame plus the «Включить звук?» dialogue; Liftboy — title screen plus «Звук вкл.?»; Allods — the Nival splash (and with an input script of 2 × FIRE it reaches the gameplay screen — see the fork smoke test and the difftest below).
 - **"unique states = 1" (Allods, cyber_blood) is not a defect** — it is a static splash during the first 3 seconds. Likewise, the 2 blank frames of Elven Chronicles are start-up before the first draw.
-- **`RecordStoreNotFoundException` on Masha i Medved is not a crash** — it is the normal save probe on first launch (`openRecordStore(..., false)` against an empty store).
+- **`RecordStoreNotFoundException` on that jar is not a crash** — it is the normal save probe on first launch (`openRecordStore(..., false)` against an empty store).
 - No comparison against the Block A FreeJ2ME engine was made here (a different task); this is a smoke test of midp-rt specifically.
 
 ### Context from the same session

@@ -1,6 +1,6 @@
 # Determinism: the fixed-clock instrumentation
 
-This document is the permanent record of the deterministic-clock instrumentation of MIDlets (`--fixed-clock`): what the ASM transformer rewrites, what it deliberately leaves alone, what was measured on the reference game, and — most importantly — where the honest boundary of the guarantee lies. The core work was done and measured on 2026-06-12 (FreeJ2ME-plus, the game Allods); the StackMapTable addendum at the end was found and fixed on 2026-07-30 (the game Masha, midp-rt). Measurements quoted here are historical figures from the Python edition of the toolkit; the implementation carried over module-for-module into the Rust tree, and the file names below are the Rust ones.
+This document is the permanent record of the deterministic-clock instrumentation of MIDlets (`--fixed-clock`): what the ASM transformer rewrites, what it deliberately leaves alone, what was measured on the reference game, and — most importantly — where the honest boundary of the guarantee lies. The core work was done and measured on 2026-06-12 (FreeJ2ME-plus, the game Allods); the StackMapTable addendum at the end was found and fixed on 2026-07-30 (a second corpus jar, midp-rt). Measurements quoted here are historical figures from the Python edition of the toolkit; the implementation carried over module-for-module into the Rust tree, and the file names below are the Rust ones.
 
 Stage A7 of the runtime plan was implemented by **route (b)** — ASM instrumentation of the MIDlet — and explicitly **not** by forking FreeJ2ME-plus (route (a), a GPL fork, was rejected). It is a frame-oriented determinism reserve for running difftest on a noisy emulator.
 
@@ -79,7 +79,7 @@ With the wall-clock sampling delay disabled (`deterministic_capture`): **8 indep
 
 ## Addendum, 2026-07-30: StackMapTable frames (class files with major ≥ 50)
 
-Found on the game Masha. The transformer read classes with `ClassReader.SKIP_FRAMES` but wrote them with a `ClassWriter` carrying only `COMPUTE_MAXS` — that is, it **discarded the StackMapTable and put nothing in its place**.
+Found on a second corpus jar. The transformer read classes with `ClassReader.SKIP_FRAMES` but wrote them with a `ClassWriter` carrying only `COMPUTE_MAXS` — that is, it **discarded the StackMapTable and put nothing in its place**.
 
 - On ORIGINAL phone jars (major 48/49) there are no frames and none are needed, so the defect never showed: every earlier measurement in this document remains valid.
 - On a tree rebuilt with a modern `javac` (major 61) the instrumented jar stopped loading:
@@ -89,7 +89,7 @@ Found on the game Masha. The transformer read classes with `ClassReader.SKIP_FRA
 ### How it was fixed
 
 - **Main path — PRESERVE the frames.** None of the edits change the shape of the stack at a frame point (a call is replaced by a call with the same descriptor; the seed push/pop happens strictly between instructions), so the original frames remain correct — they only have to not be lost. For major ≥ 50 the class is read with flags `0` instead of `SKIP_FRAMES`; ASM re-emits every frame at its shifted offset, while `COMPUTE_MAXS` still recomputes `max_stack`.
-- **Below major 50 — exactly the previous behaviour** (`SKIP_FRAMES`): a desktop JVM verifies such classes by type inference and ignores the CLDC `StackMap` attribute. Checked byte for byte: every class entry of the instrumented `Masha_240.jar` matches the pre-fix output.
+- **Below major 50 — exactly the previous behaviour** (`SKIP_FRAMES`): a desktop JVM verifies such classes by type inference and ignores the CLDC `StackMap` attribute. Checked byte for byte: every class entry of that instrumented jar matches the pre-fix output.
 - **Fallback path — `COMPUTE_FRAMES`** (`--recompute-frames`, and also automatically when a class with major ≥ 50 has branches but no frames at all, because an obfuscator stripped them). `COMPUTE_FRAMES` calls `getCommonSuperClass`, which needs a loader that sees both the jar's own classes and the MIDP API. The `Hierarchy` class resolves super/interface links **by reading `.class` resources** from a loader spanning [the input jar] + [`--cp`] + [the transformer's own loader], without initialising classes; `fixedclock::api_classpath` (`src/fixedclock.rs`) supplies `midp-rt.jar` / the emulator jar automatically. Unresolved types are **reported**, not swallowed — without `--cp` the output shows `Unresolved: [javax/microedition/rms/RecordStore]`.
 - The injected `arlecchino/det/Det.class` was given a fixed mtime, so instrumenting the same jar twice is now reproducible bit for bit.
 - The same latent defect was cleaned out of `assets/MemberRenamer.java` (which wrote `ClassWriter(0)` + `SKIP_FRAMES`): renaming members does not change the shape of the stack at all, so the frames are simply carried through, and `ClassRemapper` remaps the types inside them along the way.

@@ -17,6 +17,10 @@ CORPUS="${1:-$HOME/Загрузки/J2ME}"
 BIN="${ARLECCHINO:-$REPO/target/release/arlecchino}"
 CFG="$HERE/engines.6.toml"
 EXP="$HERE/expected.txt"
+# Optional private overlay: same format, not tracked (see .gitignore).  Jars whose
+# corpus is not ours to name live here, so the published gate stays publishable
+# while the local one still covers the whole corpus.
+EXP_LOCAL="$HERE/expected.local.txt"
 WORK="$(mktemp -d "${TMPDIR:-/var/tmp}/arlecchino-regress.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -29,6 +33,9 @@ for jar in "$CORPUS"/*.jar "$CORPUS"/*.JAR; do
   [ -e "$jar" ] || continue
   stem="$(basename "$jar")"; stem="${stem%.*}"
   want="$(awk -v s="$stem" '$1==s {print $2"/"$3}' "$EXP")"
+  if [ -z "$want" ] && [ -f "$EXP_LOCAL" ]; then
+    want="$(awk -v s="$stem" '$1==s {print $2"/"$3}' "$EXP_LOCAL")"
+  fi
   [ -n "$want" ] || { printf '%-38s %14s %14s\n' "$stem" "-" "(no entry)"; continue; }
   seen=$((seen+1))
   log="$WORK/$stem.log"
