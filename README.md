@@ -555,6 +555,11 @@ The engine configuration is TOML/JSON. Resolution order: `--config PATH` →
 Each `[[engine]]` has `name`, `type` (`names`/`renamed`), `kind` (`jar`/`tool`), `path`,
 `args` (with `{jar}`/`{out}`), optional `sources_subdir` and `normalize` (`none`/`jadx`).
 
+## Contributing
+
+Contributions are accepted under the [Contributor License Agreement](CLA.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose a change.
+
 ## License
 
 **Apache-2.0** — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Independent clean-room
