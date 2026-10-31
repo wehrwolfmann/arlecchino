@@ -40,6 +40,12 @@ enum Cmd {
     Run(RunArgs),
     /// behavioural diff: run orig + rebuilt jars headless, compare screen-state sequences and RMS (stage A5)
     Difftest(DifftestArgs),
+    /// OPTIONAL: model-proposed names for obfuscated classes/members, applied to the bytecode (sends code to the configured model)
+    #[command(name = "ai-rename")]
+    AiRename(crate::ai::AiRenameArgs),
+    /// OPTIONAL: model-written Javadoc for classes and non-obvious methods, inserted into a copy of the source (sends code to the configured model)
+    #[command(name = "ai-annotate")]
+    AiAnnotate(crate::ai::AiAnnotateArgs),
 }
 
 #[derive(Args)]
@@ -955,7 +961,8 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
     // backward-compat: `arlecchino foo.jar ...` == `arlecchino decompile foo.jar ...`
     if let Some(first) = argv.first() {
         if !first.starts_with('-')
-            && !["decompile", "setup", "emulate", "run", "difftest"].contains(&first.as_str())
+            && !["decompile", "setup", "emulate", "run", "difftest", "ai-rename", "ai-annotate"]
+                .contains(&first.as_str())
         {
             argv.insert(0, "decompile".into());
         }
@@ -978,6 +985,8 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
         Some(Cmd::Emulate(a)) => cmd_emulate(&a),
         Some(Cmd::Run(a)) => cmd_run(&a),
         Some(Cmd::Difftest(a)) => cmd_difftest(&a),
+        Some(Cmd::AiRename(a)) => crate::ai::cmd_ai_rename(&a),
+        Some(Cmd::AiAnnotate(a)) => crate::ai::cmd_ai_annotate(&a),
         None => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
             let _ = cmd.print_help();
