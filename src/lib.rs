@@ -16,6 +16,8 @@
 
 pub const VERSION: &str = "1.0.0";
 
+pub mod ai_model;
+pub mod aifix;
 pub mod autofix;
 pub mod cli;
 pub mod config;
