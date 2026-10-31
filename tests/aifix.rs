@@ -182,7 +182,7 @@ fn fixing_reply_is_accepted_and_substituted() {
     assert_eq!(s.failing_before, 1);
     assert_eq!(s.failing_after, 0);
     assert_eq!(s.accepted, 1);
-    assert_eq!(s.model_calls, 1);
+    assert_eq!(s.attempts_total, 1);
     assert!(s.isolated_errors_before > 0);
     assert_eq!(s.isolated_errors_after, 0);
     assert!(s.tree_errors_before > 0);
@@ -264,7 +264,7 @@ fn endlessly_wrong_model_hits_the_attempt_limit_and_changes_nothing() {
     assert_eq!(s.accepted, 0);
     assert_eq!(s.rejected, 1);
     assert_eq!(s.failing_after, 1);
-    assert_eq!(s.model_calls, 4);
+    assert_eq!(s.attempts_total, 4);
     let outcomes: Vec<&str> = s.classes[0].attempts.iter().map(|a| a.outcome.as_str()).collect();
     assert_eq!(outcomes, vec!["compile_errors", "no_code", "not_same_unit", "compile_errors"]);
     assert_eq!(s.isolated_errors_after, s.isolated_errors_before);
@@ -335,7 +335,7 @@ fn model_error_stops_the_class_without_retrying() {
     };
     let model = ScriptedModel::with_results([Err("401 invalid x-api-key".to_string())]);
     let s = aifix::run(&model, &f.ws, None, &Options::default());
-    assert_eq!(s.model_calls, 1);
+    assert_eq!(s.attempts_total, 1);
     assert_eq!(s.classes[0].attempts[0].outcome, "model_error");
     assert_eq!(merged_text(&f), MERGED_BROKEN);
     let _ = std::fs::remove_dir_all(&f.root);

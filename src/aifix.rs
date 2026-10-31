@@ -970,7 +970,8 @@ pub struct Summary {
     pub tree_errors_after: i64,
     pub accepted: usize,
     pub rejected: usize,
-    pub model_calls: usize,
+    /// model replies consumed (cache hits included)
+    pub attempts_total: usize,
     pub classes: Vec<ClassLog>,
 }
 
@@ -1095,7 +1096,7 @@ pub fn run(model: &dyn ChatModel, ws: &Workspace, candidates: Option<&[String]>,
         tree_errors_after: tree_after,
         accepted,
         rejected: logs.iter().filter(|l| l.status == "rejected").count(),
-        model_calls: logs.iter().map(|l| l.attempts.len()).sum(),
+        attempts_total: logs.iter().map(|l| l.attempts.len()).sum(),
         classes: logs,
     };
     write_journal(ws, &summary);
@@ -1131,7 +1132,7 @@ fn write_journal(ws: &Workspace, s: &Summary) {
         format!("- failing classes: {} -> {}", s.failing_before, s.failing_after),
         format!("- isolated errors (attempted classes): {} -> {}", s.isolated_errors_before, s.isolated_errors_after),
         format!("- whole-tree errors: {} -> {}", s.tree_errors_before, s.tree_errors_after),
-        format!("- accepted {}, rejected {}, model calls {}", s.accepted, s.rejected, s.model_calls),
+        format!("- accepted {}, rejected {}, attempts {}", s.accepted, s.rejected, s.attempts_total),
         String::new(),
         "| class | before | after | status | attempts |".into(),
         "|---|---|---|---|---|".into(),
