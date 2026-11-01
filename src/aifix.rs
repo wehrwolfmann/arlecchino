@@ -1158,6 +1158,222 @@ fn write_journal(ws: &Workspace, s: &Summary) {
     let _ = std::fs::write(ws.work.join("report.md"), md.join("\n") + "\n");
 }
 
+// ───────────────────────────── CLI: `arlecchino ai-fix` ─────────────────────
+
+/// `arlecchino ai-fix [OUT]` — runs over the output directory of a previous
+/// `decompile` (its `merged/`, engine trees and `report.json`).
+#[derive(clap::Args, Debug)]
+pub struct AiFixArgs {
+    /// output directory of a previous `arlecchino decompile`
+    #[arg(default_value = "arlecchino_out")]
+    pub out: String,
+    /// dependency classpath used by the decompile run (e.g. a MIDP stub)
+    #[arg(long = "classpath")]
+    pub classpath: Option<String>,
+    /// path to a MIDP/CLDC stub jar (default: auto-find, as `decompile` does)
+    #[arg(long = "midp-stub")]
+    pub midp_stub: Option<String>,
+    #[arg(long = "no-midp-stub")]
+    pub no_midp_stub: bool,
+    /// engines config used by the decompile run (to locate each engine's tree)
+    #[arg(long = "config")]
+    pub config: Option<String>,
+    /// model calls per class before giving up
+    #[arg(long = "attempts", default_value_t = 3)]
+    pub attempts: usize,
+    /// repair at most this many classes
+    #[arg(long = "max-classes")]
+    pub max_classes: Option<usize>,
+    /// only this class (relative path such as `a/B.java`); repeatable
+    #[arg(long = "class")]
+    pub class: Vec<String>,
+    /// accept a compiling fix even when its bytecode drifts from the original
+    #[arg(long = "no-semantic-gate")]
+    pub no_semantic_gate: bool,
+    /// build and save the prompts (ai_fix/prompts/), send nothing
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+    /// do not ask before sending code to a remote endpoint
+    #[arg(long = "yes", short = 'y')]
+    pub yes: bool,
+    /// anthropic | openai (any OpenAI-compatible endpoint, e.g. a local server)
+    #[arg(long = "provider")]
+    pub provider: Option<String>,
+    #[arg(long = "model")]
+    pub model: Option<String>,
+    #[arg(long = "base-url")]
+    pub base_url: Option<String>,
+    /// name of the environment variable that holds the API key
+    #[arg(long = "api-key-env")]
+    pub api_key_env: Option<String>,
+    /// TOML file with an `[ai]` table (provider, model, base_url, ...)
+    #[arg(long = "ai-config")]
+    pub ai_config: Option<String>,
+    #[arg(long = "effort")]
+    pub effort: Option<String>,
+    #[arg(long = "max-tokens")]
+    pub max_tokens: Option<u32>,
+    /// response cache directory (default: OUT/ai_fix/cache)
+    #[arg(long = "cache-dir")]
+    pub cache_dir: Option<String>,
+    #[arg(long = "no-cache")]
+    pub no_cache: bool,
+}
+
+fn confirm_remote(base_url: &str) -> bool {
+    use std::io::{BufRead, IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return false;
+    }
+    print!("Send decompiled code to {base_url}? [y/N] ");
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    let _ = std::io::stdin().lock().read_line(&mut line);
+    matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+pub fn cmd_ai_fix(a: &AiFixArgs) -> i32 {
+    use crate::ai::provider::{CachedModel, ProviderConfig, ProviderOverrides};
+
+    let out = util::absolutize(Path::new(&a.out));
+    let merged = out.join("merged");
+    if !merged.is_dir() {
+        println!("ai-fix: {} has no merged/ tree — run `arlecchino decompile` first", out.display());
+        return 2;
+    }
+    let report: serde_json::Value = util::read_text_lossy(&out.join("report.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or(serde_json::Value::Null);
+    let jar = match report.get("jar").and_then(|v| v.as_str()) {
+        Some(j) if Path::new(j).exists() => PathBuf::from(j),
+        _ => {
+            println!("ai-fix: report.json in {} names no existing jar", out.display());
+            return 2;
+        }
+    };
+    let mapping = report
+        .pointer("/member_rename/mapping")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .filter(|p| p.exists());
+
+    let (engines, _, root) = match crate::config::load_engines(a.config.as_deref()) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("config error: {e}");
+            return 2;
+        }
+    };
+    let mut classpath = a.classpath.clone();
+    if classpath.is_none() && !a.no_midp_stub {
+        classpath = crate::emulate::find_freej2me(a.midp_stub.as_deref(), Some(&root))
+            .map(|p| p.to_string_lossy().into_owned());
+    }
+    let engine_dirs: Vec<(String, PathBuf)> = engines
+        .iter()
+        .filter(|e| e.enabled && e.type_ == "names")
+        .map(|e| (e.name.clone(), e.sources_dir(&out.join(&e.name))))
+        .filter(|(_, d)| d.is_dir())
+        .collect();
+
+    let cfg = match ProviderConfig::resolve(&ProviderOverrides {
+        provider: a.provider.clone(),
+        model: a.model.clone(),
+        base_url: a.base_url.clone(),
+        api_key_env: a.api_key_env.clone(),
+        max_tokens: a.max_tokens,
+        effort: a.effort.clone(),
+        config: a.ai_config.as_ref().map(PathBuf::from),
+    }) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("ai-fix: {e}");
+            return 2;
+        }
+    };
+
+    println!("== Arlecchino ai-fix :: {} ==", out.display());
+    println!("   jar: {}", jar.display());
+    println!("   engines: {}", engine_dirs.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", "));
+    println!("   model: {} @ {}", cfg.id(), cfg.base_url);
+    if !a.dry_run && cfg.is_remote() {
+        println!(
+            "\n   WARNING: ai-fix sends the source of every failing class, its javac errors,\n   \
+             the other decompilers' variants and bytecode/signature excerpts of the jar to\n   \
+             {} — a third-party service. Use --dry-run to inspect the prompts first,\n   \
+             or --provider openai --base-url http://localhost:... to keep code local.\n",
+            cfg.base_url
+        );
+        if !a.yes && !confirm_remote(&cfg.base_url) {
+            println!("ai-fix: not confirmed (pass --yes to send without asking) — nothing sent");
+            return 1;
+        }
+    }
+
+    let ws = Workspace {
+        merged,
+        jar,
+        classpath,
+        mapping,
+        engines: engine_dirs,
+        work: out.join("ai_fix"),
+    };
+    let opts = Options {
+        max_attempts: a.attempts.max(1),
+        max_classes: a.max_classes,
+        only: a.class.clone(),
+        semantic_gate: !a.no_semantic_gate,
+        dry_run: a.dry_run,
+        max_tokens: cfg.max_tokens,
+        ..Options::default()
+    };
+    let candidates = failing_from_report(&report);
+    let cache_dir = a
+        .cache_dir
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| ws.work.join("cache"));
+
+    let summary = if a.dry_run {
+        let offline = CachedModel::offline(&cfg.id(), &cache_dir);
+        run(&offline, &ws, candidates.as_deref(), &opts)
+    } else {
+        let live = match cfg.build() {
+            Ok(m) => m,
+            Err(e) => {
+                println!("ai-fix: {e}");
+                return 2;
+            }
+        };
+        if a.no_cache {
+            run(&live, &ws, candidates.as_deref(), &opts)
+        } else {
+            let cached = CachedModel::new(&live, &cache_dir);
+            run(&cached, &ws, candidates.as_deref(), &opts)
+        }
+    };
+
+    println!("\n== ai-fix RESULT ==");
+    println!("   failing classes: {} -> {}", summary.failing_before, summary.failing_after);
+    println!(
+        "   isolated errors: {} -> {}   whole-tree errors: {} -> {}",
+        summary.isolated_errors_before,
+        summary.isolated_errors_after,
+        summary.tree_errors_before,
+        summary.tree_errors_after
+    );
+    println!(
+        "   accepted {}, rejected {}, attempts {}",
+        summary.accepted, summary.rejected, summary.attempts_total
+    );
+    if a.dry_run {
+        println!("   dry run: prompts in {}", ws.work.join("prompts").display());
+    }
+    println!("   journal: {}", ws.work.join("report.md").display());
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

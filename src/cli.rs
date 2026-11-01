@@ -40,6 +40,9 @@ enum Cmd {
     Run(RunArgs),
     /// behavioural diff: run orig + rebuilt jars headless, compare screen-state sequences and RMS (stage A5)
     Difftest(DifftestArgs),
+    /// OPTIONAL: model-assisted repair of classes still failing after the merge (sends code to the configured model)
+    #[command(name = "ai-fix")]
+    AiFix(crate::aifix::AiFixArgs),
     /// OPTIONAL: model-proposed names for obfuscated classes/members, applied to the bytecode (sends code to the configured model)
     #[command(name = "ai-rename")]
     AiRename(crate::ai::AiRenameArgs),
@@ -961,7 +964,7 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
     // backward-compat: `arlecchino foo.jar ...` == `arlecchino decompile foo.jar ...`
     if let Some(first) = argv.first() {
         if !first.starts_with('-')
-            && !["decompile", "setup", "emulate", "run", "difftest", "ai-rename", "ai-annotate"]
+            && !["decompile", "setup", "emulate", "run", "difftest", "ai-fix", "ai-rename", "ai-annotate"]
                 .contains(&first.as_str())
         {
             argv.insert(0, "decompile".into());
@@ -985,6 +988,7 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
         Some(Cmd::Emulate(a)) => cmd_emulate(&a),
         Some(Cmd::Run(a)) => cmd_run(&a),
         Some(Cmd::Difftest(a)) => cmd_difftest(&a),
+        Some(Cmd::AiFix(a)) => crate::aifix::cmd_ai_fix(&a),
         Some(Cmd::AiRename(a)) => crate::ai::cmd_ai_rename(&a),
         Some(Cmd::AiAnnotate(a)) => crate::ai::cmd_ai_annotate(&a),
         None => {

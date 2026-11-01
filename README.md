@@ -71,6 +71,9 @@ arlecchino difftest  <orig.jar> [rebuilt.jar] [--input SCRIPT] [-o OUT]
                      [--boot-wait S] [-W 240] [-H 320]
                      [--shift-tol N] [--jaccard-margin F] [--no-baseline]
                      [--fixed-clock]
+arlecchino ai-fix    [OUT] [--dry-run] [--attempts 3] [--max-classes N] [--class REL]…
+                     [--provider anthropic|openai] [--model M] [--base-url URL]
+                     [--no-semantic-gate] [--no-cache] [-y]
 ```
 
 `arlecchino <jar> …` is shorthand for `arlecchino decompile <jar> …` (back-compat).
@@ -322,6 +325,38 @@ because the replay is done by the runtime itself rather than by a libretro joypa
   libretro joypad index. A script that hard-codes joypad indices is therefore silently
   reinterpreted when run through midp-rt — use the symbolic names in any script meant
   for both engines.
+
+### `ai-fix` — optional model-assisted repair of the residue
+
+**Off by default; runs only when invoked, and sends code to a model.** It works on the
+output of a previous `decompile` run (`OUT`, default `arlecchino_out`) and touches only
+the classes that still fail to compile after best-of and autofix. For each one the
+model gets the javac errors, the merged variant, the *diverging regions* of every other
+engine's variant, the members and failing methods of the original bytecode, and the
+signatures of the in-jar classes the class refers to.
+
+A reply is accepted only when all of these hold — otherwise it is rejected and the new
+errors (or the drifting methods) are fed back, up to `--attempts` times:
+
+1. the class compiles with zero errors, isolated, against the original jar;
+2. it declares the same package and top-level type;
+3. if `javap` is available, the semantic round-trip gate (the `--semdiff`
+   normalisation) finds no method whose call / field / `new` reference set drifted
+   from the original bytecode — so a class cannot be "fixed" by deleting code
+   (`--no-semantic-gate` switches this off);
+4. after all substitutions the whole merged tree has no more errors than before;
+   otherwise accepted classes are reverted.
+
+Everything lands in `OUT/ai_fix/`: `report.md` and `summary.json` (failing classes,
+isolated and whole-tree errors before → after), `journal.jsonl` (every attempt and why
+it was accepted or rejected), `attempts/` (every candidate), `before/` (the replaced
+text), `prompts/` and the response `cache/`. `--dry-run` writes the prompts and sends
+nothing.
+
+The provider is the Anthropic Messages API by default (`ANTHROPIC_API_KEY`), or any
+OpenAI-compatible endpoint with `--provider openai --base-url …` — e.g. a local server,
+so the code never leaves the machine. Before sending to a remote endpoint the command
+warns and asks for confirmation (`-y` skips the question).
 
 ## GUI
 
