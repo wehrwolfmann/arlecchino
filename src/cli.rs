@@ -195,7 +195,7 @@ struct DecompileArgs {
 struct SetupArgs {
     #[arg(long = "engines-root")]
     engines_root: Option<String>,
-    /// comma list: vineflower,cfr,procyon,jadx,jd-core,jode,fernflower,dava,asm,midp-stub,midp-rt
+    /// comma list: vineflower,cfr,procyon,jadx,jd-core,sporeflower,jode,fernflower,dava,sporeflower-legacy,asm,midp-stub,midp-rt
     #[arg(long = "only")]
     only: Option<String>,
     #[arg(long = "no-freej2me")]

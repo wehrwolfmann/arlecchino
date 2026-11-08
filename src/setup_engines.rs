@@ -2,8 +2,9 @@
 //! ~/.arlecchino/engines/.
 //!
 //! Engines are fetched from their official GitHub releases (Vineflower, CFR, Procyon,
-//! jadx, JD-Core via jd-cli) plus a few pinned direct downloads (Jode from SourceForge,
-//! the standalone Fernflower and Soot/Dava jars from Maven Central).  ASM (org.ow2.asm,
+//! jadx, JD-Core via jd-cli, the native Sporeflower binary) plus a few pinned direct
+//! downloads (Jode from SourceForge, the standalone Fernflower and Soot/Dava jars from
+//! Maven Central, the Java edition of Sporeflower from its last jar release).  ASM (org.ow2.asm,
 //! BSD-3-Clause) is fetched from Maven Central for the bytecode member-renamer helper.
 //! FreeJ2ME is fetched as a prebuilt release jar or built from source with `javac`
 //! (no Ant).  Every step degrades gracefully offline.
@@ -49,6 +50,7 @@ fn engine_tag(name: &str) -> String {
         "procyon" => util::tool("ARLECCHINO_PROCYON_VERSION", "v0.6.0"),
         "jadx" => util::tool("ARLECCHINO_JADX_VERSION", "v1.5.5"),
         "jd-core" => util::tool("ARLECCHINO_JD_CLI_VERSION", "jd-cli-1.3.0-beta-1"),
+        "sporeflower" => util::tool("ARLECCHINO_SPOREFLOWER_VERSION", "v2026.11.08.40.1"),
         _ => String::new(),
     }
 }
@@ -151,6 +153,7 @@ fn engine_pred(name: &str) -> Box<dyn Fn(&str) -> bool> {
         }),
         "jadx" => Box::new(|a: &str| a.starts_with("jadx-") && a.ends_with(".zip") && !a.contains("gui")),
         "jd-core" => Box::new(|a: &str| a.starts_with("jd-cli") && a.ends_with("-dist.zip")),
+        "sporeflower" => Box::new(|a: &str| Some(a) == sporeflower_asset()),
         _ => Box::new(|_: &str| false),
     }
 }
@@ -162,11 +165,53 @@ fn engine_repo(name: &str) -> &'static str {
         "procyon" => "mstrobel/procyon",
         "jadx" => "skylot/jadx",
         "jd-core" => "intoolswetrust/jd-cli",
+        "sporeflower" => "hourianto/sporeflower",
         _ => "",
     }
 }
 
-const GH_ORDER: &[&str] = &["vineflower", "cfr", "procyon", "jadx", "jd-core"];
+/// Sporeflower ships one native binary per platform, packed as
+/// `sporeflower-<os>-<arch>.tar.gz` (`.zip` on Windows).  None = no build for this host.
+fn sporeflower_asset() -> Option<&'static str> {
+    if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        Some("sporeflower-linux-x86_64.tar.gz")
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        Some("sporeflower-linux-arm64.tar.gz")
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        Some("sporeflower-macos-x86_64.tar.gz")
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Some("sporeflower-macos-arm64.tar.gz")
+    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        Some("sporeflower-windows-x86_64.zip")
+    } else {
+        None
+    }
+}
+
+/// Unpack a Sporeflower release archive into `<root>/sporeflower/`.  The `.tar.gz`
+/// goes through the system `tar` (no tar/gzip crates for one file).
+fn unpack_sporeflower(archive: &Path, root: &Path) -> Result<(), String> {
+    let dir = root.join("sporeflower");
+    let _ = std::fs::create_dir_all(&dir);
+    if archive.extension().map(|e| e == "zip").unwrap_or(false) {
+        return util::zip_extract_all(archive, &dir).map_err(|e| e.to_string());
+    }
+    let argv = vec![
+        util::tool("ARLECCHINO_TAR", "tar"),
+        "-xzf".to_string(),
+        archive.to_string_lossy().to_string(),
+        "-C".to_string(),
+        dir.to_string_lossy().to_string(),
+    ];
+    let r = util::run_capture(&argv, Some(Duration::from_secs(120)));
+    if r.success() {
+        Ok(())
+    } else {
+        Err(format!("tar: {}", r.stderr.trim()))
+    }
+}
+
+const GH_ORDER: &[&str] = &["vineflower", "cfr", "procyon", "jadx", "jd-core", "sporeflower"];
 
 /// Engines fetched as a single pinned jar (name, url, target filename).  Jode is the
 /// classic 2001 decompiler; Fernflower is the standalone JetBrains engine (repackaged
@@ -186,6 +231,13 @@ const DIRECT_JARS: &[(&str, &str, &str)] = &[
         "dava",
         "https://repo1.maven.org/maven2/org/soot-oss/soot/4.3.0/soot-4.3.0-jar-with-dependencies.jar",
         "soot.jar",
+    ),
+    // The Java edition of Sporeflower (a Vineflower fork tuned for J2ME), frozen on
+    // upstream's `legacy` branch; v2026.11.03.38.1 is its last release with a jar.
+    (
+        "sporeflower-legacy",
+        "https://github.com/hourianto/sporeflower/releases/download/v2026.11.03.38.1/sporeflower.jar",
+        "sporeflower-legacy.jar",
     ),
 ];
 
@@ -254,6 +306,18 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
                 }
                 let _ = std::fs::remove_file(&zpath);
                 format!("ok (jd-cli.jar) [{tag}]")
+            } else if *name == "sporeflower" {
+                let apath = root.join(&fname);
+                println!("  [{name}] downloading {fname} ...");
+                if let Err(e) = download(&url, &apath) {
+                    return format!("FAILED: {e}");
+                }
+                let res = unpack_sporeflower(&apath, root);
+                let _ = std::fs::remove_file(&apath);
+                if let Err(e) = res {
+                    return format!("FAILED: {e}");
+                }
+                format!("ok (sporeflower/sporeflower) [{tag}]")
             } else {
                 let target = root.join(match *name {
                     "vineflower" => "vineflower.jar",
@@ -586,6 +650,7 @@ mod tests {
         "ARLECCHINO_PROCYON_VERSION",
         "ARLECCHINO_JADX_VERSION",
         "ARLECCHINO_JD_CLI_VERSION",
+        "ARLECCHINO_SPOREFLOWER_VERSION",
         "ARLECCHINO_FREEJ2ME_PLUS_VERSION",
         "GITHUB_TOKEN",
         "GH_TOKEN",
@@ -663,6 +728,47 @@ mod tests {
         ));
         assert!(engine_pred("jd-core")("jd-cli-1.3.0-beta-1-dist.zip"));
         assert!(!engine_pred("jd-core")("jd-cli-1.3.0-beta-1-dist.tar.gz"));
+    }
+
+    /// Sporeflower publishes a native binary per platform under date-stamped tags.
+    /// The tag is pinned like the others; the asset is chosen for the host.
+    #[test]
+    fn sporeflower_is_pinned_and_picks_the_host_asset() {
+        let _g = clean_env();
+        assert_eq!(engine_tag("sporeflower"), "v2026.11.08.40.1");
+        assert_eq!(engine_repo("sporeflower"), "hourianto/sporeflower");
+        assert!(GH_ORDER.contains(&"sporeflower"));
+        let url = release_api_url(engine_repo("sporeflower"), &engine_tag("sporeflower"));
+        assert!(url.ends_with("/repos/hourianto/sporeflower/releases/tags/v2026.11.08.40.1"), "{url}");
+        let pred = engine_pred("sporeflower");
+        if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            assert!(pred("sporeflower-linux-x86_64.tar.gz"));
+        }
+        assert!(!pred("sporeflower.jar"));
+        assert!(!pred("sporeflower.zip"));
+        let hosts = [
+            "sporeflower-linux-arm64.tar.gz",
+            "sporeflower-linux-x86_64.tar.gz",
+            "sporeflower-macos-arm64.tar.gz",
+            "sporeflower-macos-x86_64.tar.gz",
+            "sporeflower-windows-x86_64.zip",
+        ];
+        assert!(hosts.iter().filter(|a| pred(a)).count() <= 1);
+        std::env::set_var("ARLECCHINO_SPOREFLOWER_VERSION", "v2026.11.07.39.1");
+        assert_eq!(engine_tag("sporeflower"), "v2026.11.07.39.1");
+        std::env::remove_var("ARLECCHINO_SPOREFLOWER_VERSION");
+    }
+
+    /// The Java edition is a direct download whose version is part of the URL.
+    #[test]
+    fn sporeflower_legacy_jar_is_pinned_by_url() {
+        let (_, url, target) = DIRECT_JARS
+            .iter()
+            .find(|(n, _, _)| *n == "sporeflower-legacy")
+            .expect("sporeflower-legacy in DIRECT_JARS");
+        assert!(url.contains("/releases/download/v2026.11.03.38.1/"), "{url}");
+        assert!(!url.contains("latest"), "{url}");
+        assert_eq!(*target, "sporeflower-legacy.jar");
     }
 
     // ── (b) ENV override honored ────────────────────────────────────────────

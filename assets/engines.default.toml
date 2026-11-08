@@ -86,3 +86,30 @@ kind = "jar"
 path = "soot.jar"
 args = ["-f", "dava", "-allow-phantom-refs", "-pp", "-d", "{out}", "-process-dir", "{jar}"]
 sources_subdir = "dava/src"
+
+# Sporeflower (hourianto/sporeflower, Apache-2.0) — a decompiler built for J2ME.  The
+# current edition is a native binary that brings its own CLDC/MIDP/vendor API
+# declarations, so it needs no JVM.  It keeps the original class names; members whose
+# names collide are renamed, but the member renamer has already made every
+# such name unique in the jar it is given.  It still renames members whose names it
+# finds captured in source (`field_N`, `method_N`) and, when the jar also has named
+# packages, moves the default-package classes into `defaultpkg`.  The "sporeflower"
+# normalizer undoes both — the original names come from its Tiny map
+# (`mapping.tiny`) — so its classes merge with everyone else's.
+# Listed after the others so that ties still go to the engines above.
+[[engine]]
+name = "sporeflower"
+type = "names"
+kind = "tool"
+path = "sporeflower/sporeflower"
+args = ["{jar}", "-o", "{out}", "--quiet"]
+normalize = "sporeflower"
+
+# The Java edition of Sporeflower: the Vineflower fork it started as, now frozen on
+# upstream's `legacy` branch.  Same command line as Vineflower.
+[[engine]]
+name = "sporeflower-legacy"
+type = "names"
+kind = "jar"
+path = "sporeflower-legacy.jar"
+args = ["{jar}", "{out}"]

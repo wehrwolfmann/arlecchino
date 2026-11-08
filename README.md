@@ -80,8 +80,8 @@ arlecchino ai-fix    [OUT] [--dry-run] [--attempts 3] [--max-classes N] [--class
 
 ### `setup` — get the engines + emulator
 
-Downloads **Vineflower, CFR, Procyon, jadx** (plus **JD-Core, Jode, Fernflower and
-Dava**) from their GitHub releases and builds or fetches **FreeJ2ME** into
+Downloads **Vineflower, CFR, Procyon, jadx** (plus **JD-Core, Jode, Fernflower,
+Dava** and both editions of **Sporeflower**) from their GitHub releases and builds or fetches **FreeJ2ME** into
 `~/.arlecchino/engines/`. It also downloads **ASM** (`org.ow2.asm`, BSD-3-Clause) from
 Maven Central into `~/.arlecchino/engines/asm/` and compiles the bytecode
 member-renamer helper against it.
@@ -106,10 +106,23 @@ shift the headline metric.
 | Procyon | `v0.6.0` | `procyon-decompiler-0.6.0.jar` | `ARLECCHINO_PROCYON_VERSION` |
 | jadx | `v1.5.5` | `jadx-1.5.5.zip` (`bin/jadx`) | `ARLECCHINO_JADX_VERSION` |
 | JD-Core | `jd-cli-1.3.0-beta-1` | `jd-cli-…-dist.zip` | `ARLECCHINO_JD_CLI_VERSION` |
+| Sporeflower | `v2026.11.08.40.1` | `sporeflower-<os>-<arch>.tar.gz` (native binary) | `ARLECCHINO_SPOREFLOWER_VERSION` |
 | ASM | `9.7` | Maven Central | `ARLECCHINO_ASM_VERSION` |
 | FreeJ2ME-plus | `1.52` | `freej2me-v1.52.zip` (`freej2me.jar` + `freej2me-lr.jar`) | `ARLECCHINO_FREEJ2ME_PLUS_VERSION` |
 
-Jode, Fernflower and Dava (Soot) are pinned by construction — they are single direct
+[Sporeflower](https://github.com/hourianto/sporeflower) is a decompiler built for J2ME
+(Apache-2.0). Its current edition is a native binary with its own CLDC/MIDP/vendor API
+declarations; `setup` unpacks the build for the host into
+`~/.arlecchino/engines/sporeflower/` (the `.tar.gz` goes through the system `tar`). Its
+earlier Java edition, a Vineflower fork now on upstream's `legacy` branch, is fetched as
+`sporeflower-legacy.jar` from v2026.11.03.38.1, the last release that shipped a jar.
+Both come after the other engines in the default config, so ties keep going to those.
+The native edition moves default-package classes into a `defaultpkg` package when the
+jar also has named ones, and renames members it considers captured in source to
+`field_N` / `method_N`; the `sporeflower` normalizer moves the classes back and restores
+the jar's member names from its Tiny map, so its classes merge with the other engines'.
+
+Jode, Fernflower, Dava (Soot) and the Sporeflower jar are pinned by construction — they are single direct
 downloads whose version is part of the URL, so they have no ENV override. jd-cli's
 newest release is a beta; the pin freezes the one this port was measured against rather
 than following wherever `releases/latest` happens to point.

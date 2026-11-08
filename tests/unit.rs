@@ -28,8 +28,63 @@ fn packaged_default_config_parses() {
     for want in ["vineflower", "cfr", "procyon", "jadx"] {
         assert!(names.contains(&want), "{want} missing from the packaged default: {names:?}");
     }
+    // Sporeflower comes in two editions: the native binary and the Java (Vineflower
+    // fork) jar.  Both sit after the original eight, so ties keep going to those.
+    let sf = engines.iter().find(|e| e.name == "sporeflower").expect("sporeflower");
+    assert_eq!((sf.kind.as_str(), sf.type_.as_str()), ("tool", "names"));
+    let sfl = engines.iter().find(|e| e.name == "sporeflower-legacy").expect("sporeflower-legacy");
+    assert_eq!(sfl.kind, "jar");
+    let pos = |n: &str| names.iter().position(|x| *x == n).unwrap();
+    assert!(pos("sporeflower") > pos("dava") && pos("sporeflower-legacy") > pos("dava"), "{names:?}");
     assert!(matches!(src, config::ConfigSource::File(_)));
     let _ = std::fs::remove_dir_all(&w);
+}
+
+// ─────────────── Sporeflower output -> canonical name space ────────────────
+
+#[test]
+fn sporeflower_normalizer_unwraps_defaultpkg_and_restores_member_names() {
+    use arlecchino::normalize;
+    let w = common::workdir("sfnorm");
+    let put = |rel: &str, text: &str| {
+        let p = w.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    };
+    put(
+        "defaultpkg/a.java",
+        "package defaultpkg;\n\npublic class a extends n {\n    public int field_0;\n    void method_3() { this.field_0 = 1; }\n}\n",
+    );
+    put(
+        "Container/G.java",
+        "package Container;\n\nimport defaultpkg.a;\nimport javax.microedition.midlet.MIDlet;\n\npublic class G {\n    a x; defaultpkg.a y;\n    String s = \"field_0\";\n    void f() { x.field_0 = 2; x.method_3(); }\n}\n",
+    );
+    put(
+        "mapping.tiny",
+        "tiny\t2\t0\toriginal\tsource\n\tescaped-names\nc\ta\tdefaultpkg/a\n\tf\tI\ta\tfield_0\n\tm\t()V\tb\tmethod_3\n\tm\t()V\tc\tc\nc\tContainer/G\tContainer/G\n",
+    );
+    put(".sporeflower-compile.json", "{}");
+    assert_eq!(normalize::apply("sporeflower", &w, true), 1);
+    assert!(!w.join("defaultpkg").exists());
+    assert!(!w.join("mapping.tiny").exists() && !w.join(".sporeflower-compile.json").exists());
+    let a = std::fs::read_to_string(w.join("a.java")).unwrap();
+    assert!(a.starts_with("public class a extends n {"), "{a}");
+    assert!(a.contains("public int a;") && a.contains("void b() { this.a = 1; }"), "{a}");
+    let g = std::fs::read_to_string(w.join("Container/G.java")).unwrap();
+    assert!(!g.contains("defaultpkg"), "{g}");
+    assert!(g.contains("import javax.microedition.midlet.MIDlet;"), "{g}");
+    assert!(g.contains("a x; a y;") && g.contains("x.a = 2; x.b();"), "{g}");
+    assert!(g.contains("String s = \"field_0\";"), "string literals are left alone: {g}");
+    let _ = std::fs::remove_dir_all(&w);
+}
+
+#[test]
+fn sporeflower_tiny_map_lists_only_synthetic_renames() {
+    let m = arlecchino::normalize::sporeflower_synthetic_names(
+        "tiny\t2\t0\toriginal\tsource\n\tescaped-names\nc\tq\tq\n\tf\tI\ta\ta\n\tf\tI\tb\tfield_7\n\tm\t()V\tdo\tdo_\n\tm\t(I)V\tc\tmethod_12\n",
+    );
+    let got: Vec<(&str, &str)> = m.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    assert_eq!(got, vec![("field_7", "b"), ("method_12", "c")]);
 }
 
 #[test]
