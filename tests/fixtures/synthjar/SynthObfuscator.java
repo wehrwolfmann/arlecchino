@@ -15,6 +15,8 @@
 //   (e) MIDP callback override + colliding twin       — Screen: re-parent to Canvas, and
 //                                                       add `keyPressed(I)I` next to the
 //                                                       genuine callback `keyPressed(I)V`
+//   (h) reserved word as a member name              — Body: method `weight()I` becomes
+//                                                       `do`; Holder: field `n` becomes `if`
 // (c) type-shadow and (d) const-interface-shadow are already source-legal in the base
 // sources (a field named like an in-jar type; an instance field shadowing an inherited
 // constant) and need no bytecode surgery — the renamer handles them from the clean jar.
@@ -75,6 +77,12 @@ public final class SynthObfuscator {
             // ...and add a colliding return-type-only twin that the renamer MUST rename
             // (the callback itself must stay locked).
             injectReturnTypeOverload(cn, "keyPressed", "(I)V", "(I)I");
+        } else if (internal.equals("Body")) {
+            // (h) a reserved word as a method name (legal in bytecode only)
+            renameMethod(cn, "weight", "()I", "do");
+        } else if (internal.equals("Holder")) {
+            // (h) a reserved word as a field name; Holder is its only user
+            renameOwnField(cn, "n", "I", "if");
         }
 
         ClassWriter cw = new ClassWriter(0);   // no frames/maxs recompute needed
@@ -123,5 +131,26 @@ public final class SynthObfuscator {
         twin.maxStack = 2;
         twin.maxLocals = 2;   // this + int arg
         cn.methods.add(twin);
+    }
+
+    /** (h) Rename a method declaration (it has no callers in the fixture). */
+    static void renameMethod(ClassNode cn, String name, String desc, String to) {
+        for (MethodNode mn : cn.methods)
+            if (mn.name.equals(name) && mn.desc.equals(desc)) { mn.name = to; return; }
+        throw new IllegalStateException("method not found: " + name + desc + " in " + cn.name);
+    }
+
+    /** (h) Rename a field and every access to it inside its own class. */
+    static void renameOwnField(ClassNode cn, String name, String desc, String to) {
+        boolean found = false;
+        for (FieldNode fn : cn.fields)
+            if (fn.name.equals(name) && fn.desc.equals(desc)) { fn.name = to; found = true; }
+        if (!found) throw new IllegalStateException("field not found: " + name + " in " + cn.name);
+        for (MethodNode mn : cn.methods)
+            for (AbstractInsnNode in : mn.instructions.toArray())
+                if (in instanceof FieldInsnNode) {
+                    FieldInsnNode f = (FieldInsnNode) in;
+                    if (f.owner.equals(cn.name) && f.name.equals(name) && f.desc.equals(desc)) f.name = to;
+                }
     }
 }

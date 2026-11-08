@@ -85,6 +85,7 @@ public final class MemberRenamer {
     final List<String> mappingLines = new ArrayList<>();
     int typeShadowCount = 0;   // fields renamed because they shadowed an in-jar type
     int constShadowCount = 0;  // interface constants renamed (inherited-shadow)
+    int keywordCount = 0;      // members whose name is not a Java identifier (`do`, `if`)
 
     static String mkey(String owner, String name, String desc) { return owner + "#" + name + " " + desc; }
 
@@ -135,6 +136,7 @@ public final class MemberRenamer {
         buildVirtualGroups();
         planMethodRenames();
         planFieldRenames();
+        planKeywordRenames();
         planTypeShadowFieldRenames();
         planConstInterfaceShadowRenames();
         if (flattenPackages) planTypeFlatten();
@@ -145,6 +147,7 @@ public final class MemberRenamer {
                 + " fieldRenames=" + fieldRenames.size()
                 + " (typeShadowFields=" + typeShadowCount
                 + " constIfaceShadow=" + constShadowCount
+                + " keyword=" + keywordCount
                 + (flattenPackages ? " flattenedTypes=" + typeRemap.size() : "")
                 + ")");
     }
@@ -516,6 +519,75 @@ public final class MemberRenamer {
             s.add(fieldRenames.getOrDefault(k, fn.name));
         }
         return s;
+    }
+
+    // ---- plan renames of members whose name is not a Java identifier ----------
+    //
+    // ProGuard-style dictionaries hand out reserved words (`do`, `if`, `for`) and the
+    // JVM accepts any name, but Java source cannot spell them.  Every decompiler then
+    // invents its own replacement (`cfr_renamed_0`, `do_`, `_do`), so the classes of
+    // different engines no longer agree on the jar's API and the round-trip check sees
+    // a missing member.  Give such members ONE source-legal name here instead.  A method
+    // is renamed with its whole virtual group; a locked group (an external contract)
+    // keeps its name — no library declares a method called `do`.
+    static final Set<String> JAVA_RESERVED = new HashSet<>(Arrays.asList(
+            "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
+            "class", "const", "continue", "default", "do", "double", "else", "enum",
+            "extends", "final", "finally", "float", "for", "goto", "if", "implements",
+            "import", "instanceof", "int", "interface", "long", "native", "new",
+            "package", "private", "protected", "public", "return", "short", "static",
+            "strictfp", "super", "switch", "synchronized", "this", "throw", "throws",
+            "transient", "try", "void", "volatile", "while", "true", "false", "null",
+            "_"));
+
+    static boolean isSourceIdentifier(String name) {
+        if (name.isEmpty() || JAVA_RESERVED.contains(name)) return false;
+        if (!Character.isJavaIdentifierStart(name.charAt(0))) return false;
+        for (int i = 1; i < name.length(); i++)
+            if (!Character.isJavaIdentifierPart(name.charAt(i))) return false;
+        return true;
+    }
+
+    /** A source-legal base for a renamed non-identifier: keep the letters/digits that
+     *  are legal (so `do` stays recognisable as `do_<hash>`), else fall back to `m`/`f`. */
+    static String legalBase(String name, String fallback) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (b.length() == 0 ? Character.isJavaIdentifierStart(c) : Character.isJavaIdentifierPart(c))
+                b.append(c);
+        }
+        return b.length() == 0 ? fallback : b.toString();
+    }
+
+    void planKeywordRenames() {
+        for (Info info : classes.values()) {
+            Set<String> usedF = existingFieldNames(info);
+            for (FieldNode fn : info.node.fields) {
+                if (isSourceIdentifier(fn.name)) continue;
+                String k = mkey(info.name(), fn.name, fn.desc);
+                if (fieldRenames.containsKey(k)) continue;
+                String newName = uniqueName(legalBase(fn.name, "f"), fn.desc, usedF);
+                fieldRenames.put(k, newName);
+                usedF.add(newName);
+                keywordCount++;
+                mappingLines.add(info.name() + "." + fn.name + " " + fn.desc
+                        + " -> " + newName + "  (keyword)");
+            }
+        }
+        for (Info info : classes.values()) {
+            for (MethodNode mn : info.node.methods) {
+                if (isCtor(mn.name) || isSourceIdentifier(mn.name)) continue;
+                String k = mkey(info.name(), mn.name, mn.desc);
+                if (methodRenames.containsKey(k)) continue;  // already moved (overload / group)
+                if (groupLocked(k)) continue;                // external contract keeps it
+                Set<String> used = existingMethodNames(info);
+                String newName = uniqueName(legalBase(mn.name, "m"), mn.desc, used);
+                int before = methodRenames.size();
+                renameWholeGroup(k, newName);
+                keywordCount += methodRenames.size() - before;
+            }
+        }
     }
 
     // ---- plan FIELD renames (field name shadows an in-jar TYPE name) ----------
