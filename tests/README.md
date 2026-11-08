@@ -16,7 +16,7 @@ Run everything with `cargo test`. There is nothing else to install beyond what
 | `tests/autofix_mask.rs` | auto-fix robustness to braces, semicolons and keywords hiding inside string literals, char literals and comments — including a copy of the old raw brace matcher, kept only to *prove* the historical misfire | nothing |
 | `tests/behaviour_parity.rs` | golden comparison of `difftest` / `diffrun` / `midprun` / `semdiff` against the reference implementation on the same inputs (`tests/golden/behaviour_parity.json`) | nothing |
 | `tests/unit.rs` | config loading, `Engine::argv`, the collision pre-check on hand-assembled `.class` bytes, rebuilt-jar packing, the loud rejection of an unknown input key, mapping-file parsing, `.jad`/manifest garbage handling, runtime-classpath layouts, the missing-runtime hint | nothing |
-| `tests/synthjar.rs` | the bytecode member renamer against a synthetic obfuscated jar: all five injected collisions, the byte-for-byte golden mapping, determinism, and the full rename → decompile → merge pipeline at 0 isolated errors | `javac`, ASM, the compiled helper; the last test also needs the engines |
+| `tests/synthjar.rs` | the bytecode member renamer against a synthetic obfuscated jar: all seven injected collisions, the byte-for-byte golden mapping, determinism, and the full rename → decompile → merge pipeline at 0 isolated errors | `javac`, ASM, the compiled helper; the last test also needs the engines |
 | `tests/flatten.rs` | `--flatten-packages`: the cross-package error stands without the flag and is gone with it, the manifest entry class is rewritten, the naming is deterministic | `javac`, `java`, ASM, the compiled helper |
 | `tests/fixedclock.rs` | the deterministic-clock instrumentation: what it rewrites, that two JVM launches agree byte for byte, that the default path is a no-op, and the StackMapTable regression on modern class files | `javac`, `java`, `javap`, ASM, the compiled transformer |
 | `tests/semdiff_javap.rs` | the semantic round-trip end to end against a live `javap`: a semantics-changing fix is flagged, a mapping-reconciled rename is not, `variant_drifts` separates drift from cosmetics | `javac`, `javap` |
@@ -50,7 +50,7 @@ parity goldens and the whole renamer safety net.
 
 ## The synthetic obfuscated jar
 
-`tests/common/build_synth_jar` compiles five small classes with `javac`, then
+`tests/common/build_synth_jar` compiles nine small classes with `javac`, then
 post-processes them with ASM (`tests/fixtures/synthjar/SynthObfuscator.java`, built
 against the same ASM jars the real renamer uses) to inject the source-illegal member
 collisions that ProGuard-style obfuscation produces. Nothing is vendored: the jar is
@@ -63,8 +63,10 @@ generated on every run.
 | (c) type-shadow | field `Engine.State:I` shadowing the in-jar type `State` | renamed, tagged `(type-shadow)` |
 | (d) const-interface shadow | the constant `Consts.b` shadowed by the instance field `Holder.b` | the constant is renamed, tagged `(const-iface-shadow)` |
 | (e) MIDP callback override plus twin | `Screen` re-parented to `Canvas`; `keyPressed(I)I` next to `keyPressed(I)V` | `keyPressed(I)V` stays **locked**; the twin `(I)I` is renamed |
+| (f) self-name type-shadow | static field `Tally.Tally:I` in a class that calls its own statics (printed `Tally.bump()`) | renamed, tagged `(type-shadow)` |
+| (g) inherited type-shadow | `Frame.Part:I`, inherited by `Body`, which names the type `Part` | renamed at `Frame`; `Body`'s read (owner `Body`) follows the rename |
 
-`tests/golden/synth_mapping.txt` is the exact `mapping.txt` those five cases must
+`tests/golden/synth_mapping.txt` is the exact `mapping.txt` those seven cases must
 produce, compared byte for byte. Any change to how override-group membership is
 enumerated, or to the lock predicate, or to the new-name scheme, shows up there
 immediately.
