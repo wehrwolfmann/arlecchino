@@ -37,13 +37,18 @@
 # gone from this machine (its full history is a bundle under ~/Projects/_архив/), so
 # these numbers can no longer be re-derived from it — they now stand on their own,
 # and regress/run.sh is the only thing that keeps them honest.
-Allods_1_2_240x320 4 1
+#
+# RE-MEASURED 2026-11-08 with binary 3851713 (member renamer: fields that shadow a
+# type, members named after Java keywords), same corpus and config, isolated engines
+# root: six jars dropped (Allods, cyber_blood, Elven, Get Rich, liquidator, Silent
+# Storm), none rose.
+Allods_1_2_240x320 1 1
 Bruce_Lee_-_Iron_Fist_2D 1 1
-cyber_blood_rus 43 6
-Elven_Chronicles_v1_0_5ru_240x320 327 28
+cyber_blood_rus 5 5
+Elven_Chronicles_v1_0_5ru_240x320 7 6
 Flitzer_w900_rus 16 16
-Get_Rich_or_Die_Tryin_ru_240x320 114 60
+Get_Rich_or_Die_Tryin_ru_240x320 4 4
 GOTHIC-3 7 7
 Liftboy_240x320_rus 6 4
-liquidator_rus 128 5
-Silent_Storm_240x320 18 12
+liquidator_rus 2 2
+Silent_Storm_240x320 13 12
