@@ -72,8 +72,8 @@ arlecchino difftest  <orig.jar> [rebuilt.jar] [--input SCRIPT] [-o OUT]
                      [--shift-tol N] [--jaccard-margin F] [--no-baseline]
                      [--fixed-clock]
 arlecchino ai-fix    [OUT] [--dry-run] [--attempts 3] [--max-classes N] [--class REL]…
-                     [--provider anthropic|openai] [--model M] [--base-url URL]
-                     [--no-semantic-gate] [--no-cache] [-y]
+                     [--provider anthropic|openai|claude-code] [--model M]
+                     [--base-url URL] [--no-semantic-gate] [--no-cache] [-y]
 ```
 
 `arlecchino <jar> …` is shorthand for `arlecchino decompile <jar> …` (back-compat).
@@ -370,6 +370,20 @@ The provider is the Anthropic Messages API by default (`ANTHROPIC_API_KEY`), or 
 OpenAI-compatible endpoint with `--provider openai --base-url …` — e.g. a local server,
 so the code never leaves the machine. Before sending to a remote endpoint the command
 warns and asks for confirmation (`-y` skips the question).
+
+If you have Claude Code installed and are logged in, it can be used instead of an API
+key: `--provider claude-code` (or `provider = "claude-code"` in the `[ai]` table, or
+`ARLECCHINO_AI_PROVIDER=claude-code`). Each request then runs
+`claude -p --output-format json` with the prompt on stdin, every tool disabled and no
+MCP servers, in safe mode (your own CLAUDE.md, hooks and plugins are not loaded) and
+an empty scratch directory, one request at a time. This uses the usage
+limits of your Claude Code subscription, shared with your other Claude Code sessions.
+Arlecchino only starts the program — it never reads Claude Code's settings or
+credentials. The program is `claude` from `PATH`, or `ARLECCHINO_CLAUDE_BIN` /
+`claude_bin = "…"`; `--model` is passed through (the CLI's own default otherwise),
+`timeout_secs` (default 600) bounds each call, and `claude_args = ["…"]` appends extra
+CLI arguments. The response cache and `--dry-run` behave as with the other providers.
+The same applies to `ai-rename` and `ai-annotate`.
 
 ## GUI
 

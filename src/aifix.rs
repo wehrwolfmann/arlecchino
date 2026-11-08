@@ -1196,7 +1196,8 @@ pub struct AiFixArgs {
     /// do not ask before sending code to a remote endpoint
     #[arg(long = "yes", short = 'y')]
     pub yes: bool,
-    /// anthropic | openai (any OpenAI-compatible endpoint, e.g. a local server)
+    /// anthropic | openai (any OpenAI-compatible endpoint, e.g. a local server) |
+    /// claude-code (an installed, logged-in Claude Code CLI)
     #[arg(long = "provider")]
     pub provider: Option<String>,
     #[arg(long = "model")]
@@ -1296,16 +1297,16 @@ pub fn cmd_ai_fix(a: &AiFixArgs) -> i32 {
     println!("== Arlecchino ai-fix :: {} ==", out.display());
     println!("   jar: {}", jar.display());
     println!("   engines: {}", engine_dirs.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", "));
-    println!("   model: {} @ {}", cfg.id(), cfg.base_url);
+    println!("   model: {} @ {}", cfg.id(), cfg.endpoint());
     if !a.dry_run && cfg.is_remote() {
         println!(
             "\n   WARNING: ai-fix sends the source of every failing class, its javac errors,\n   \
              the other decompilers' variants and bytecode/signature excerpts of the jar to\n   \
              {} — a third-party service. Use --dry-run to inspect the prompts first,\n   \
              or --provider openai --base-url http://localhost:... to keep code local.\n",
-            cfg.base_url
+            cfg.endpoint()
         );
-        if !a.yes && !confirm_remote(&cfg.base_url) {
+        if !a.yes && !confirm_remote(&cfg.endpoint()) {
             println!("ai-fix: not confirmed (pass --yes to send without asking) — nothing sent");
             return 1;
         }

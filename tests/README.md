@@ -24,6 +24,7 @@ Run everything with `cargo test`. There is nothing else to install beyond what
 | `tests/midp_rt.rs` | where `midp-rt.jar` is looked for, in what order, and the CLI's exit codes on the error paths | nothing (nothing is launched) |
 | `tests/difftest_live.rs` | the harness end to end on a real MIDlet: self-versus-self passes, a recoloured copy fails, a key tap produces a new screen state, a run leaves a record store | `javac`, `java`, `midp-rt.jar` |
 | `tests/aifix.rs` | the `ai-fix` repair loop on a hand-written two-class program, driven by a scripted model (never the network): a fixing reply is substituted, a still-broken reply gets its new error fed back, an endlessly wrong model stops at the attempt limit and changes nothing, a compiling but behaviour-changing reply is rejected by the semantic gate, dry run sends nothing | `javac` (`javap` for the gate cases) |
+| `tests/claude_code.rs` | the `claude-code` provider against a stand-in `claude` shell script (the real CLI is never started): the result is read and the prompt goes on stdin with tools off, a usage-limit error is clear and not retried, a hung program is killed at the timeout, garbage output is a readable error, the cache and offline mode skip the program, the provider is never the default | `sh` |
 | `tests/common/` | the fixture builders shared by the above (not a test binary) | — |
 | `tests/fixtures/` | Java sources for the generated fixtures — nothing pre-built is committed | — |
 | `tests/golden/` | committed expected values | — |

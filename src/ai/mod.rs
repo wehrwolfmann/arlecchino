@@ -31,7 +31,8 @@ use std::path::{Path, PathBuf};
 /// Model selection flags shared by the AI subcommands.
 #[derive(Args, Debug, Clone, Default)]
 pub struct ModelArgs {
-    /// anthropic (default) | openai (any OpenAI-compatible endpoint, e.g. Ollama)
+    /// anthropic (default) | openai (any OpenAI-compatible endpoint, e.g. Ollama) |
+    /// claude-code (an installed, logged-in Claude Code CLI)
     #[arg(long = "provider")]
     pub provider: Option<String>,
     /// model id (default: claude-sonnet-5-5 for anthropic)
@@ -98,7 +99,7 @@ fn confirm_remote(base_url: &str) -> bool {
 
 /// Print the warning and get consent.  `None` = proceed, `Some(code)` = stop.
 fn gate(stage: &str, what: &str, cfg: &ProviderConfig, m: &ModelArgs) -> Option<i32> {
-    println!("   model: {} @ {}", cfg.id(), cfg.base_url);
+    println!("   model: {} @ {}", cfg.id(), cfg.endpoint());
     if m.dry_run || !cfg.is_remote() {
         return None;
     }
@@ -107,9 +108,9 @@ fn gate(stage: &str, what: &str, cfg: &ProviderConfig, m: &ModelArgs) -> Option<
          Only use it on code you are allowed to share with it. --dry-run shows exactly\n   \
          what would be sent; --provider openai --base-url http://localhost:... keeps\n   \
          the code on this machine.\n",
-        cfg.base_url
+        cfg.endpoint()
     );
-    if !m.yes && !confirm_remote(&cfg.base_url) {
+    if !m.yes && !confirm_remote(&cfg.endpoint()) {
         println!("{stage}: not confirmed (pass --yes to send without asking) — nothing sent");
         return Some(1);
     }

@@ -7,6 +7,10 @@
 //!   `ANTHROPIC_API_KEY`;
 //! * [`OpenAiCompatModel`] — any OpenAI-compatible `chat/completions` endpoint, e.g. a
 //!   local Ollama or llama.cpp server, so code never has to leave the machine;
+//! * [`ClaudeCodeModel`] — runs an installed Claude Code CLI (`claude -p`) with all
+//!   tools disabled and reads its JSON result, so a logged-in Claude Code install can
+//!   stand in for an API key.  This module never reads Claude Code's own files or
+//!   credentials; it only starts the program;
 //! * [`CachedModel`] — wraps any model with an on-disk response cache keyed by a hash
 //!   of the full request, so a re-run costs nothing and returns the same answers.
 //!
@@ -30,12 +34,17 @@ pub const ANTHROPIC_API_VERSION: &str = "2026-10-21";
 pub const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 pub const DEFAULT_OPENAI_BASE_URL: &str = "http://localhost:11434/v1";
 pub const DEFAULT_MAX_TOKENS: u32 = 16000;
+/// Program started by the `claude-code` provider when neither
+/// `ARLECCHINO_CLAUDE_BIN` nor `claude_bin` in the config names another one.
+pub const DEFAULT_CLAUDE_BIN: &str = "claude";
 
 /// Which wire protocol to speak.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderKind {
     Anthropic,
     OpenAi,
+    /// The local Claude Code CLI in non-interactive mode.
+    ClaudeCode,
 }
 
 impl ProviderKind {
@@ -43,7 +52,8 @@ impl ProviderKind {
         match s.to_ascii_lowercase().as_str() {
             "anthropic" | "claude" => Ok(ProviderKind::Anthropic),
             "openai" | "ollama" | "local" | "openai-compatible" => Ok(ProviderKind::OpenAi),
-            other => Err(format!("unknown AI provider `{other}` (expected anthropic or openai)")),
+            "claude-code" | "claude_code" | "claudecode" => Ok(ProviderKind::ClaudeCode),
+            other => Err(format!("unknown AI provider `{other}` (expected anthropic, openai or claude-code)")),
         }
     }
 }
@@ -65,6 +75,10 @@ pub struct ProviderConfig {
     /// Anthropic only: send `fallbacks: "default"` so a classifier refusal is retried
     /// server-side on a fallback model instead of failing the batch.
     pub fallbacks: bool,
+    /// claude-code only: the program to run (a name looked up in `PATH`, or a path).
+    pub claude_bin: String,
+    /// claude-code only: extra arguments appended after the built-in ones.
+    pub claude_args: Vec<String>,
 }
 
 impl Default for ProviderConfig {
@@ -79,6 +93,8 @@ impl Default for ProviderConfig {
             retries: 4,
             effort: None,
             fallbacks: true,
+            claude_bin: DEFAULT_CLAUDE_BIN.into(),
+            claude_args: Vec::new(),
         }
     }
 }
@@ -137,6 +153,19 @@ impl ProviderConfig {
             c.model = "qwen2.5-coder".into();
             c.fallbacks = false;
         }
+        if kind == ProviderKind::ClaudeCode {
+            // The CLI picks its own default model unless one is named.
+            c.model = String::new();
+            c.base_url = String::new();
+            c.fallbacks = false;
+            c.retries = 1;
+            if let Some(b) = env_nonempty("ARLECCHINO_CLAUDE_BIN").or_else(|| from_toml("claude_bin")) {
+                c.claude_bin = b;
+            }
+            if let Some(args) = table.as_ref().and_then(|t| t.get("claude_args")).and_then(|v| v.as_array()) {
+                c.claude_args = args.iter().filter_map(|a| a.as_str().map(String::from)).collect();
+            }
+        }
         if let Some(m) = pick(&o.model, "ARLECCHINO_AI_MODEL", "model") {
             c.model = m;
         }
@@ -164,17 +193,34 @@ impl ProviderConfig {
         Ok(c)
     }
 
-    /// True when requests leave this machine (anything but a loopback host).
+    /// True when requests leave this machine (anything but a loopback host).  The
+    /// Claude Code CLI always sends the prompt to Anthropic.
     pub fn is_remote(&self) -> bool {
-        is_remote_url(&self.base_url)
+        match self.kind {
+            ProviderKind::ClaudeCode => true,
+            _ => is_remote_url(&self.base_url),
+        }
+    }
+
+    /// Where requests go, for logs and the consent prompt.
+    pub fn endpoint(&self) -> String {
+        match self.kind {
+            ProviderKind::ClaudeCode => format!("{} (Claude Code CLI)", self.claude_bin),
+            _ => self.base_url.clone(),
+        }
     }
 
     pub fn id(&self) -> String {
         let k = match self.kind {
             ProviderKind::Anthropic => "anthropic",
             ProviderKind::OpenAi => "openai",
+            ProviderKind::ClaudeCode => "claude-code",
         };
-        format!("{k}:{}", self.model)
+        if self.model.is_empty() {
+            k.to_string()
+        } else {
+            format!("{k}:{}", self.model)
+        }
     }
 
     /// Build the live provider.  Fails early (before any request) on a missing key
@@ -197,6 +243,7 @@ impl ProviderConfig {
                 }
                 Ok(LiveModel::OpenAi(OpenAiCompatModel { cfg: self.clone(), key, usage: Mutex::new(Usage::default()) }))
             }
+            ProviderKind::ClaudeCode => Ok(LiveModel::ClaudeCode(ClaudeCodeModel::new(self.clone())?)),
         }
     }
 }
@@ -205,6 +252,7 @@ impl ProviderConfig {
 pub enum LiveModel {
     Anthropic(AnthropicModel),
     OpenAi(OpenAiCompatModel),
+    ClaudeCode(ClaudeCodeModel),
 }
 
 impl LiveModel {
@@ -213,6 +261,7 @@ impl LiveModel {
         match self {
             LiveModel::Anthropic(m) => *m.usage.lock().unwrap(),
             LiveModel::OpenAi(m) => *m.usage.lock().unwrap(),
+            LiveModel::ClaudeCode(m) => *m.usage.lock().unwrap(),
         }
     }
 }
@@ -222,12 +271,14 @@ impl ChatModel for LiveModel {
         match self {
             LiveModel::Anthropic(m) => m.id(),
             LiveModel::OpenAi(m) => m.id(),
+            LiveModel::ClaudeCode(m) => m.id(),
         }
     }
     fn chat(&self, req: &ChatRequest) -> Result<String, String> {
         match self {
             LiveModel::Anthropic(m) => m.chat(req),
             LiveModel::OpenAi(m) => m.chat(req),
+            LiveModel::ClaudeCode(m) => m.chat(req),
         }
     }
 }
@@ -487,6 +538,272 @@ impl ChatModel for OpenAiCompatModel {
     }
 }
 
+// ── Claude Code CLI (`claude -p … --output-format json`) ─────────────────────
+
+/// Runs the installed Claude Code CLI once per request.  The prompt goes in on
+/// stdin, every tool is disabled, MCP servers and session files are off, and the
+/// child runs in an empty scratch directory.  Calls are serialised (one at a time):
+/// the CLI draws on the same usage limits as the user's other sessions.
+pub struct ClaudeCodeModel {
+    cfg: ProviderConfig,
+    bin: PathBuf,
+    usage: Mutex<Usage>,
+    one_at_a_time: Mutex<()>,
+}
+
+/// Find `bin` the way a shell would: a name with no `/` is looked up in `PATH`.
+pub fn find_program(bin: &str) -> Option<PathBuf> {
+    let p = crate::util::expanduser(bin);
+    if bin.contains('/') {
+        return p.is_file().then_some(p);
+    }
+    std::env::split_paths(&std::env::var_os("PATH")?)
+        .map(|d| d.join(bin))
+        .find(|c| c.is_file())
+}
+
+/// The command line after the program name (pure; unit-tested).  The prompt itself
+/// is not here: it is written to stdin.
+pub fn claude_code_args(cfg: &ProviderConfig, req: &ChatRequest) -> Vec<String> {
+    let mut a: Vec<String> = [
+        "-p",
+        "--output-format",
+        "json",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--permission-mode",
+        "dontAsk",
+        "--no-session-persistence",
+        "--disable-slash-commands",
+        // no CLAUDE.md, hooks, plugins or skills of the user's own setup
+        "--safe-mode",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    if !req.system.is_empty() {
+        a.push("--system-prompt".into());
+        a.push(req.system.clone());
+    }
+    if !cfg.model.is_empty() {
+        a.push("--model".into());
+        a.push(cfg.model.clone());
+    }
+    if let Some(e) = &cfg.effort {
+        a.push("--effort".into());
+        a.push(e.clone());
+    }
+    a.extend(cfg.claude_args.iter().cloned());
+    a
+}
+
+/// The text written to the CLI's stdin.  A single user turn goes as is; a longer
+/// conversation (ai-fix feeds earlier replies back) is spelled out turn by turn.
+pub fn claude_code_prompt(req: &ChatRequest) -> String {
+    if req.messages.len() == 1 && req.messages[0].role == Role::User {
+        return req.messages[0].content.clone();
+    }
+    let mut s = String::from("The conversation so far, oldest turn first; reply to the last user turn.\n");
+    for m in &req.messages {
+        let tag = match m.role {
+            Role::User => "USER",
+            Role::Assistant => "ASSISTANT",
+        };
+        s.push_str(&format!("\n=== {tag} ===\n{}\n", m.content));
+    }
+    s
+}
+
+/// Interpret the CLI's `--output-format json` output (pure; unit-tested).  The CLI
+/// prints one result object; some versions print an array of events whose last
+/// `"type": "result"` element is the same object.
+fn claude_code_parse(stdout: &str, stderr: &str, exit: Option<i32>) -> Result<(String, Usage), CallError> {
+    let text = stdout.trim();
+    let v: Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => {
+            let detail = if text.is_empty() { stderr.trim() } else { text };
+            let exit = exit.map(|c| c.to_string()).unwrap_or_else(|| "signal".into());
+            return Err(CallError::Fatal(format!(
+                "claude CLI printed no JSON result (exit {exit}): {}",
+                truncate(detail, 400)
+            )));
+        }
+    };
+    let obj = match &v {
+        Value::Array(items) => items
+            .iter()
+            .rev()
+            .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("result"))
+            .cloned()
+            .ok_or_else(|| CallError::Fatal("claude CLI output has no result event".into()))?,
+        Value::Object(_) => v.clone(),
+        _ => return Err(CallError::Fatal(format!("unexpected claude CLI output: {}", truncate(text, 200)))),
+    };
+    let result = obj.get("result").and_then(|r| r.as_str()).unwrap_or("");
+    let subtype = obj.get("subtype").and_then(|r| r.as_str()).unwrap_or("");
+    let is_error = obj.get("is_error").and_then(|b| b.as_bool()).unwrap_or(false);
+    if is_error || (!subtype.is_empty() && subtype != "success") || obj.get("result").is_none() {
+        let mut msg = if result.is_empty() {
+            obj.get("errors")
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| format!("subtype {}", if subtype.is_empty() { "?" } else { subtype }))
+        } else {
+            result.to_string()
+        };
+        msg = truncate(&msg, 400);
+        let status = obj.get("api_error_status").and_then(|s| s.as_u64());
+        let low = msg.to_ascii_lowercase();
+        if status == Some(429)
+            || ["usage limit", "rate limit", "limit reached", "hit your limit", "limit will reset"].iter().any(|k| low.contains(k))
+        {
+            return Err(CallError::Fatal(format!(
+                "Claude Code usage limit reached — try again after it resets ({msg})"
+            )));
+        }
+        if low.contains("login") || low.contains("log in") || low.contains("authenticat") || low.contains("api key") {
+            return Err(CallError::Fatal(format!(
+                "Claude Code is not logged in — run `claude` once and sign in ({msg})"
+            )));
+        }
+        if matches!(status, Some(500..=599)) || low.contains("overloaded") || low.contains("api error: 5") {
+            return Err(CallError::Transient(format!("Claude Code: {msg}"), None));
+        }
+        return Err(CallError::Fatal(format!("Claude Code reported an error: {msg}")));
+    }
+    if exit.is_some_and(|c| c != 0) {
+        return Err(CallError::Fatal(format!("claude CLI exited with {} despite a result", exit.unwrap())));
+    }
+    let n = |k: &str| obj.pointer(&format!("/usage/{k}")).and_then(|x| x.as_u64()).unwrap_or(0);
+    let usage = Usage {
+        calls: 1,
+        input_tokens: n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"),
+        output_tokens: n("output_tokens"),
+    };
+    Ok((result.to_string(), usage))
+}
+
+/// Kill the child and everything it started (it runs in its own process group).
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", &format!("-{}", child.id())])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+}
+
+impl ClaudeCodeModel {
+    /// Fails early when the program cannot be found.
+    pub fn new(cfg: ProviderConfig) -> Result<Self, String> {
+        let bin = find_program(&cfg.claude_bin).ok_or_else(|| {
+            format!(
+                "`{}` not found — install Claude Code, or point ARLECCHINO_CLAUDE_BIN (or `claude_bin` in the [ai] table) at it",
+                cfg.claude_bin
+            )
+        })?;
+        Ok(ClaudeCodeModel { cfg, bin, usage: Mutex::new(Usage::default()), one_at_a_time: Mutex::new(()) })
+    }
+
+    pub fn usage(&self) -> Usage {
+        *self.usage.lock().unwrap()
+    }
+
+    fn call_once(&self, args: &[String], prompt: &str) -> Result<String, CallError> {
+        use std::io::{Read, Write};
+        use std::process::{Command, Stdio};
+        let scratch = crate::util::make_temp_dir("arl-claude-code")
+            .map_err(|e| CallError::Fatal(format!("cannot create a scratch directory: {e}")))?;
+        let mut cmd = Command::new(&self.bin);
+        cmd.args(args)
+            .current_dir(&scratch)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&scratch);
+                return Err(CallError::Fatal(format!("cannot start {}: {e}", self.bin.display())));
+            }
+        };
+        let mut stdin = child.stdin.take().unwrap();
+        let input = prompt.to_string();
+        let tw = std::thread::spawn(move || {
+            let _ = stdin.write_all(input.as_bytes());
+        });
+        let mut so = child.stdout.take().unwrap();
+        let mut se = child.stderr.take().unwrap();
+        let t1 = std::thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = so.read_to_end(&mut b);
+            b
+        });
+        let t2 = std::thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = se.read_to_end(&mut b);
+            b
+        });
+        let start = std::time::Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(st)) => break Ok(st.code()),
+                Ok(None) if start.elapsed() >= self.cfg.timeout => {
+                    kill_tree(&mut child);
+                    let _ = child.wait();
+                    break Err(());
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+                Err(e) => {
+                    kill_tree(&mut child);
+                    let _ = std::fs::remove_dir_all(&scratch);
+                    return Err(CallError::Fatal(format!("waiting for claude CLI: {e}")));
+                }
+            }
+        };
+        let _ = tw.join();
+        let out = t1.join().unwrap_or_default();
+        let err = t2.join().unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&scratch);
+        let exit = match status {
+            Ok(code) => code,
+            Err(()) => {
+                return Err(CallError::Fatal(format!(
+                    "claude CLI timed out after {}s (raise timeout_secs in the [ai] table)",
+                    self.cfg.timeout.as_secs()
+                )))
+            }
+        };
+        let (text, u) = claude_code_parse(&String::from_utf8_lossy(&out), &String::from_utf8_lossy(&err), exit)?;
+        let mut acc = self.usage.lock().unwrap();
+        acc.calls += 1;
+        acc.input_tokens += u.input_tokens;
+        acc.output_tokens += u.output_tokens;
+        Ok(text)
+    }
+}
+
+impl ChatModel for ClaudeCodeModel {
+    fn id(&self) -> String {
+        self.cfg.id()
+    }
+    fn chat(&self, req: &ChatRequest) -> Result<String, String> {
+        let _turn = self.one_at_a_time.lock().unwrap_or_else(|p| p.into_inner());
+        let args = claude_code_args(&self.cfg, req);
+        let prompt = claude_code_prompt(req);
+        with_retries(self.cfg.retries, || self.call_once(&args, &prompt))
+    }
+}
+
 // ── on-disk response cache ───────────────────────────────────────────────────
 
 /// Stable cache key: SHA-256 over the model id and the complete request.  The
@@ -686,6 +1003,58 @@ mod tests {
         assert_eq!(extract_json("```json\n{\"a\": \"}\"}\n```").unwrap()["a"], "}");
         assert_eq!(extract_json("Sure: {\"b\":2} done").unwrap()["b"], 2);
         assert!(extract_json("nothing").is_err());
+    }
+
+    #[test]
+    fn claude_code_args_disable_tools_and_carry_options() {
+        let mut cfg = ProviderConfig { kind: ProviderKind::ClaudeCode, model: String::new(), ..Default::default() };
+        let a = claude_code_args(&cfg, &req("hi"));
+        let i = a.iter().position(|x| x == "--tools").unwrap();
+        assert_eq!(a[i + 1], "");
+        assert!(a.contains(&"-p".to_string()) && a.contains(&"json".to_string()));
+        assert!(!a.contains(&"--model".to_string()));
+        assert!(!a.iter().any(|x| x == "hi"), "prompt goes to stdin, not argv");
+        assert_eq!(a[a.iter().position(|x| x == "--system-prompt").unwrap() + 1], "sys");
+        cfg.model = "opus".into();
+        cfg.claude_args = vec!["--verbose".into()];
+        let a = claude_code_args(&cfg, &req("hi"));
+        assert_eq!(a[a.iter().position(|x| x == "--model").unwrap() + 1], "opus");
+        assert_eq!(a.last().unwrap(), "--verbose");
+        assert_eq!(cfg.id(), "claude-code:opus");
+        assert!(cfg.is_remote());
+    }
+
+    #[test]
+    fn claude_code_prompt_spells_out_a_conversation() {
+        assert_eq!(claude_code_prompt(&req("only")), "only");
+        let mut r = req("first");
+        r.messages.push(ChatMessage::assistant("draft"));
+        r.messages.push(ChatMessage::user("again"));
+        let p = claude_code_prompt(&r);
+        assert!(p.find("=== USER ===\nfirst").unwrap() < p.find("=== ASSISTANT ===\ndraft").unwrap());
+        assert!(p.trim_end().ends_with("again"));
+    }
+
+    #[test]
+    fn claude_code_parse_result_errors_and_limits() {
+        let ok = r#"{"type":"result","subtype":"success","is_error":false,"result":"OK","usage":{"input_tokens":3,"cache_read_input_tokens":5,"output_tokens":1}}"#;
+        let (t, u) = claude_code_parse(ok, "", Some(0)).unwrap();
+        assert_eq!((t.as_str(), u.input_tokens, u.output_tokens), ("OK", 8, 1));
+        let arr = r#"[{"type":"system"},{"type":"result","subtype":"success","is_error":false,"result":"x"}]"#;
+        assert_eq!(claude_code_parse(arr, "", Some(0)).unwrap().0, "x");
+        let lim = r#"{"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1762600000"}"#;
+        match claude_code_parse(lim, "", Some(1)) {
+            Err(CallError::Fatal(m)) => assert!(m.contains("usage limit"), "{m}"),
+            other => panic!("{other:?}"),
+        }
+        let login = r#"{"type":"result","is_error":true,"result":"Invalid API key · Please run /login"}"#;
+        assert!(matches!(claude_code_parse(login, "", Some(1)), Err(CallError::Fatal(m)) if m.contains("not logged in")));
+        let busy = r#"{"type":"result","is_error":true,"result":"API Error: 529 overloaded"}"#;
+        assert!(matches!(claude_code_parse(busy, "", Some(1)), Err(CallError::Transient(..))));
+        let turns = r#"{"type":"result","subtype":"error_max_turns","is_error":false}"#;
+        assert!(matches!(claude_code_parse(turns, "", Some(0)), Err(CallError::Fatal(m)) if m.contains("error_max_turns")));
+        assert!(matches!(claude_code_parse("garbage", "boom", Some(2)), Err(CallError::Fatal(m)) if m.contains("no JSON")));
+        assert!(matches!(claude_code_parse("", "boom", None), Err(CallError::Fatal(m)) if m.contains("boom")));
     }
 
     #[test]
