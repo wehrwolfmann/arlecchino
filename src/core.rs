@@ -85,10 +85,18 @@ pub fn run_decompiler(eng: &Engine, jar: &Path, outdir: &Path, root: &Path) -> P
     src
 }
 
+/// Every `.java` under `srcdir` that declares a type, keyed by its relative path.
+///
+/// A file with no type declaration is left out: Jode, for one, writes an EMPTY
+/// `X.java` for a class it fails on, and an empty file compiles with zero errors, so
+/// it would otherwise win the per-class merge as a "clean" variant.
 pub fn collect_java(srcdir: &Path) -> BTreeMap<String, PathBuf> {
     let mut out = BTreeMap::new();
     for p in util::rglob_ext(srcdir, "java") {
         if p.file_name().map(|n| n == "_sources.txt").unwrap_or(false) {
+            continue;
+        }
+        if !util::read_text_lossy(&p).map(|t| TOP_TYPE_RE.is_match(&t)).unwrap_or(false) {
             continue;
         }
         if let Ok(rel) = p.strip_prefix(srcdir) {

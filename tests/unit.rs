@@ -88,6 +88,18 @@ fn sporeflower_tiny_map_lists_only_synthetic_renames() {
 }
 
 #[test]
+fn collect_java_skips_files_without_a_type() {
+    let w = common::workdir("collect");
+    std::fs::create_dir_all(w.join("p")).unwrap();
+    std::fs::write(w.join("p/a.java"), "package p;\n\nclass a {}\n").unwrap();
+    std::fs::write(w.join("p/b.java"), "").unwrap();
+    std::fs::write(w.join("p/c.java"), "package p;\n").unwrap();
+    let got: Vec<String> = arlecchino::core::collect_java(&w).into_keys().collect();
+    assert_eq!(got, vec!["p/a.java".to_string()]);
+    let _ = std::fs::remove_dir_all(&w);
+}
+
+#[test]
 fn engine_argv_substitutes_jar_and_out() {
     let e = config::Engine {
         name: "x".into(),
