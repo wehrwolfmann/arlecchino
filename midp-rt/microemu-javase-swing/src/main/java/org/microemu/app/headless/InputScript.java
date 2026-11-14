@@ -10,6 +10,9 @@
  *      [{"t_ms": 4500, "key": "FIRE", "action": "tap"}, ...]
  *
  *  t_ms отсчитывается от КОНЦА boot-wait (начала захвата кадров);
+ *  вместо t_ms может стоять "tick": N — номер тика (границы кадра, строки
+ *  "F N" трассы); такой сценарий детерминирован и требует режима --ticks
+ *  (см. TickDriver). Смешивать t_ms и tick в одном файле нельзя;
  *  key — имя клавиши (UP/DOWN/LEFT/RIGHT, NUM0-9, STAR, POUND, FIRE/SELECT,
  *  SOFT_LEFT/SOFT_RIGHT, CLR) либо число = сырой MIDP-keyCode;
  *  action — press | release | tap (= press и сразу release).
@@ -43,6 +46,7 @@ public class InputScript {
 
 	public static class Event {
 		public long tMs;
+		public long tick = -1; // >= 0 — событие по тику (режим --ticks)
 		public Object key;     // String (имя) либо Number (сырой MIDP-keyCode)
 		public String action;  // press | release | tap
 	}
@@ -73,9 +77,18 @@ public class InputScript {
 		KEYMAP.put("CLR", ButtonName.DELETE);
 	}
 
+	/** Все события сценария — по тикам (пустой сценарий подходит обоим режимам). */
+	public static boolean byTick(List<Event> events) {
+		return !events.isEmpty() && events.get(0).tick >= 0;
+	}
+
 	// ───────────────────────────── инжекция ──────────────────────────────────
 	public static void inject(Event e) {
 		String action = (e.action == null) ? "press" : e.action;
+		if (!action.equals("press") && !action.equals("release") && !action.equals("tap")) {
+			System.err.println("inputs: неизвестное действие " + action + " — пропущено");
+			return;
+		}
 		if (action.equals("press") || action.equals("tap")) {
 			fire(e.key, true);
 		}
@@ -112,6 +125,12 @@ public class InputScript {
 		}
 		if (btn == null) {
 			System.err.println("inputs: у устройства нет кнопки " + key + " — пропущена");
+			return;
+		}
+		if (org.microemu.TickInput.isDelivering() && DeviceFactory.getDevice().hasRepeatEvents()) {
+			// режим тиков: на устройстве с автоповтором отпускание идёт через
+			// таймер (50 мс стены) — подаём сырой keyCode синхронно
+			rawKey(btn.getKeyCode(), press);
 			return;
 		}
 		J2SEInputMethod im = (J2SEInputMethod) DeviceFactory.getDevice().getInputMethod();
@@ -155,9 +174,21 @@ public class InputScript {
 			in.close();
 		}
 		List<Event> events = parseText(new String(raw, "UTF-8"));
+		int byTick = 0;
+		for (int i = 0; i < events.size(); i++) {
+			if (events.get(i).tick >= 0) {
+				byTick++;
+			}
+		}
+		if (byTick != 0 && byTick != events.size()) {
+			throw new IOException("inputs JSON: события по t_ms и по tick в одном файле смешивать нельзя");
+		}
+		// сортировка устойчивая: события одного тика/момента идут в порядке файла
 		Collections.sort(events, new Comparator<Event>() {
 			public int compare(Event a, Event b) {
-				return (a.tMs < b.tMs) ? -1 : (a.tMs > b.tMs) ? 1 : 0;
+				long x = (a.tick >= 0) ? a.tick : a.tMs;
+				long y = (b.tick >= 0) ? b.tick : b.tMs;
+				return (x < y) ? -1 : (x > y) ? 1 : 0;
 			}
 		});
 		return events;
@@ -178,6 +209,16 @@ public class InputScript {
 			Event e = new Event();
 			Object t = obj.get("t_ms");
 			e.tMs = (t instanceof Number) ? ((Number) t).longValue() : 0L;
+			Object tk = obj.get("tick");
+			if (tk != null) {
+				if (!(tk instanceof Long) || ((Long) tk).longValue() < 0) {
+					throw new IOException("inputs JSON: tick должен быть целым >= 0, получено " + tk);
+				}
+				if (t != null) {
+					throw new IOException("inputs JSON: у события и t_ms, и tick — нужно одно");
+				}
+				e.tick = ((Long) tk).longValue();
+			}
 			e.key = obj.get("key");
 			Object a = obj.get("action");
 			e.action = (a == null) ? "press" : a.toString();

@@ -103,10 +103,18 @@ public class ChoiceGroup extends Item implements Choice
         -126 
     };
 
-	private static final Image imgMultiOff = Image.createImage(multiOff, 0, multiOff.length);
-	private static final Image imgMultiOn = Image.createImage(multiOn, 0, multiOn.length);
-	private static final Image imgRadioOff = Image.createImage(radioOff, 0, radioOff.length);
-	private static final Image imgRadioOn = Image.createImage(radioOn, 0, radioOn.length);
+	// Форк arlecchino-midp-rt: служебные картинки рантайма создаются мимо
+	// Image.createImage, чтобы не попадать в трассу midprt.trace как "I n":
+	// класс инициализируется в произвольный момент (из любого потока), и их
+	// номера гонялись с картинками игры — трасса двух прогонов расходилась
+	private static final Image imgMultiOff = internalImage(multiOff);
+	private static final Image imgMultiOn = internalImage(multiOn);
+	private static final Image imgRadioOff = internalImage(radioOff);
+	private static final Image imgRadioOn = internalImage(radioOn);
+
+	private static Image internalImage(byte[] data) {
+		return DeviceFactory.getDevice().getDeviceDisplay().createImage(data, 0, data.length);
+	}
 
 
 	public ChoiceGroup(String label, int choiceType) 

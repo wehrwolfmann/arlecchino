@@ -39,6 +39,7 @@ import javax.microedition.midlet.MIDlet;
 import org.microemu.DisplayAccess;
 import org.microemu.GameCanvasKeyAccess;
 import org.microemu.MIDletBridge;
+import org.microemu.TickInput;
 import org.microemu.device.DeviceFactory;
 import org.microemu.device.ui.DisplayableUI;
 import org.microemu.device.ui.EventDispatcher;
@@ -204,13 +205,13 @@ public class Display {
 				if (listener == null) {
 					return;
 				}
-				eventDispatcher.put(new Runnable() {
+				dispatch(eventDispatcher.new RunnableEvent(new Runnable() {
 
 					public void run() {
 						listener.commandAction(c, d);			
 					}
 					
-				});
+				}));
 			} else {
 				// item contained command
 				commandAction(c.getOriginalCommand(), c.getFocusedItem());
@@ -222,13 +223,25 @@ public class Display {
 			if (listener == null) {
 				return;
 			}
-			eventDispatcher.put(new Runnable() {
+			dispatch(eventDispatcher.new RunnableEvent(new Runnable() {
 
 				public void run() {
 					listener.commandAction(c, item);
 				}
 
-			});
+			}));
+		}
+
+		// Форк arlecchino-midp-rt: во время доставки событий тика (TickInput,
+		// headless --ticks) событие выполняется сразу в текущем потоке, а не
+		// встаёт в очередь EventDispatcher — иначе момент, когда игра его
+		// увидит, зависит от планировщика
+		private void dispatch(EventDispatcher.Event e) {
+			if (TickInput.isDelivering()) {
+				e.run();
+			} else {
+				eventDispatcher.put(e);
+			}
 		}
 		
 		public Display getDisplay() {
@@ -255,9 +268,9 @@ public class Display {
 			}
 			if (!suppress) {
 				if (press) {
-					eventDispatcher.put(new KeyEvent(KeyEvent.KEY_PRESSED, k));
+					dispatch(new KeyEvent(KeyEvent.KEY_PRESSED, k));
 				} else {
-					eventDispatcher.put(new KeyEvent(KeyEvent.KEY_RELEASED, k));
+					dispatch(new KeyEvent(KeyEvent.KEY_RELEASED, k));
 				}
 			}
 		}
@@ -272,7 +285,7 @@ public class Display {
 			if (current != null && current instanceof GameCanvas) {
 				processGameCanvasKeyEvent((GameCanvas) current, keyCode, true);
 			} else {
-				eventDispatcher.put(new KeyEvent(KeyEvent.KEY_PRESSED, keyCode));
+				dispatch(new KeyEvent(KeyEvent.KEY_PRESSED, keyCode));
 			}
 		}
 
@@ -286,7 +299,7 @@ public class Display {
 			if (current != null && current instanceof GameCanvas) {
 				processGameCanvasKeyEvent((GameCanvas) current, keyCode, false);
 			} else {
-				eventDispatcher.put(new KeyEvent(KeyEvent.KEY_RELEASED, keyCode));
+				dispatch(new KeyEvent(KeyEvent.KEY_RELEASED, keyCode));
 			}
 		}
 
@@ -332,9 +345,9 @@ public class Display {
 		public void paint(Graphics g) {
 			// TODO consider removal of DisplayAccess::paint(..)
 			if (current != null) {
-				if (MidpTrace.ON) {
-					MidpTrace.frame();
-				}
+				// Форк arlecchino-midp-rt: граница тика — "F n" в трассу и
+				// (headless --ticks) синхронная доставка событий тика n
+				TickInput.boundary();
 				try {
 					current.paint(g);
 				} catch (Throwable th) {
@@ -630,6 +643,12 @@ public class Display {
 	}
 
 	void repaint(Displayable d, int x, int y, int width, int height) {
+		// Форк arlecchino-midp-rt: repaint() из обработчика события тика не
+		// ставится в очередь — кадр этого тика рисуется сразу после доставки,
+		// а лишний кадр в очереди гонялся бы с потоком игры
+		if (TickInput.isDelivering()) {
+			return;
+		}
 		if (current == d) {
 			eventDispatcher.put(eventDispatcher.new PaintEvent(x, y, width, height));
 		}

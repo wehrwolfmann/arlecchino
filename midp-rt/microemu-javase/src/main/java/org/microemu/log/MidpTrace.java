@@ -12,7 +12,9 @@
  *  на обычных прогонах накладных расходов нет.
  *
  *  Формат — построчный текст (легко diff'ать и грепать):
- *      F <номер кадра> t=<мс от старта трассы>   — граница кадра (paint)
+ *      F <номер кадра> t=<мс от старта трассы>   — граница кадра (paint,
+ *                                                GameCanvas.flushGraphics);
+ *                                                в режиме тиков — без t=
  *      <метод> <арг> <арг> ...                   — вызов
  *      I <id> <w>x<h> <источник>                 — создание Image
  *      P <id> <тип> <N>b                         — создание Player (JSR-135)
@@ -98,7 +100,13 @@ public final class MidpTrace {
 		frame++;
 		detail = frame < MAX_FRAMES;
 		if (detail) {
-			out.println("F " + frame + " t=" + (System.currentTimeMillis() - t0));
+			// Форк arlecchino-midp-rt: в режиме тиков (headless --ticks) время
+			// стены не пишется — трасса двух прогонов совпадает побайтно
+			if (org.microemu.TickInput.active()) {
+				out.println("F " + frame);
+			} else {
+				out.println("F " + frame + " t=" + (System.currentTimeMillis() - t0));
+			}
 		} else if (frame == MAX_FRAMES) {
 			out.println("# ... подробности отключены после кадра " + MAX_FRAMES
 					+ ", гистограмма продолжает считаться");

@@ -66,6 +66,14 @@ javax.microedition.lcdui.game.*, часть lcdui) — только LGPL 2.1. С
     больше не кастует жёстко к SwingDisplayComponent (в headless этот каст
     молча ронял поток игры ClassCastException'ом — кадры GameCanvas-игр
     не доходили до listener'а).
+  - 2026-11-14: детерминированный ввод по тикам (headless --ticks N):
+    org.microemu.TickInput (граница кадра в Display.paint и
+    J2SEDeviceDisplay.flushGraphics), org.microemu.app.headless.TickDriver;
+    во время доставки события тика клавиши/команды выполняются синхронно, а
+    repaint() не ставится в очередь; поле "tick" в сценарии --inputs;
+    flushGraphics пишет в трассу границу кадра "F n"; в режиме тиков "F n"
+    без времени стены; служебные картинки ChoiceGroup создаются мимо
+    Image.createImage и не попадают в трассу.
   - 2026-06-10: файлам upstream, шедшим без лицензионных headers, проставлены
     headers согласно лицензированию upstream (COPYING), с пометкой о форке.
 
