@@ -299,7 +299,7 @@ const MIDLET_MANIFEST: &str = "Manifest-Version: 1.0\n\
 
 /// The full clean-room MIDP/CLDC stub: reuse the installed one when present, else
 /// build one INTO `work` (a test never writes to the user's home).
-fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
+pub fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
     if let Some(p) = arlecchino::midp_stub::stub_jar() {
         return Ok(p);
     }

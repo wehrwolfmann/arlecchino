@@ -49,6 +49,12 @@ enum Cmd {
     /// OPTIONAL: model-written Javadoc for classes and non-obvious methods, inserted into a copy of the source (sends code to the configured model)
     #[command(name = "ai-annotate")]
     AiAnnotate(crate::ai::AiAnnotateArgs),
+    /// EXPERIMENTAL: mechanical translation of the merged Java tree into a Rust crate on the jrt runtime
+    #[command(name = "port-rust")]
+    PortRust(crate::portrust::PortRustArgs),
+    /// compare a midp-rt call trace with the trace of a port-rust crate (canonicalised, frame-folded)
+    #[command(name = "trace-diff")]
+    TraceDiff(crate::portrust::TraceDiffArgs),
 }
 
 #[derive(Args)]
@@ -964,7 +970,7 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
     // backward-compat: `arlecchino foo.jar ...` == `arlecchino decompile foo.jar ...`
     if let Some(first) = argv.first() {
         if !first.starts_with('-')
-            && !["decompile", "setup", "emulate", "run", "difftest", "ai-fix", "ai-rename", "ai-annotate"]
+            && !["decompile", "setup", "emulate", "run", "difftest", "ai-fix", "ai-rename", "ai-annotate", "port-rust", "trace-diff"]
                 .contains(&first.as_str())
         {
             argv.insert(0, "decompile".into());
@@ -991,6 +997,8 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
         Some(Cmd::AiFix(a)) => crate::aifix::cmd_ai_fix(&a),
         Some(Cmd::AiRename(a)) => crate::ai::cmd_ai_rename(&a),
         Some(Cmd::AiAnnotate(a)) => crate::ai::cmd_ai_annotate(&a),
+        Some(Cmd::PortRust(a)) => crate::portrust::cmd_port_rust(&a),
+        Some(Cmd::TraceDiff(a)) => crate::portrust::cmd_trace_diff(&a),
         None => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
             let _ = cmd.print_help();

@@ -34,6 +34,7 @@ pub mod midp_stub;
 pub mod midprun;
 pub mod normalize;
 pub mod permethod;
+pub mod portrust;
 pub mod rename;
 pub mod roundtrip;
 pub mod semdiff;

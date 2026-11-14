@@ -25,6 +25,13 @@ MIDP 2.0 (JSR-118) / CLDC 1.1 (JSR-139) API stub that `arlecchino setup` GENERAT
 emitted, with empty/throwing bodies; no reference-implementation source, and no
 third-party MIDP/CLDC jar, is copied, downloaded, or vendored.
 
+`port-rust` (src/portrust/, assets/JavacAstDump.java) uses only the JDK's own
+compiler API. Its runtime crate, jrt/, depends on `j2me-jvm` from
+sushi-shi/j2me-preservation-kit (https://github.com/sushi-shi/j2me-preservation-kit,
+revision cf241af1de14435fc95476f55254706f17a52b0a), CC0-1.0, for JVM integer
+semantics, java.util.Random and Data{Input,Output}Stream. Cargo fetches it as a git
+dependency; it is not vendored here.
+
 The experimental --per-method merge uses a small built-in Java signature scanner;
 no third-party parser is required.
 
