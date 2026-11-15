@@ -231,6 +231,24 @@ public class RecordStoreImpl extends RecordStore
 	}
 
 
+	/**
+	 * Форк arlecchino-midp-rt: число записей для служебных нужд рантайма
+	 * (перечисление записей, сохранение хранилища на диск) — мимо трассы
+	 * midprt.trace. В трассу идёт только getNumRecords, вызванный игрой:
+	 * иначе каждое сохранение и каждый enumerateRecords дописывали в неё
+	 * строки "RecordStore.getNumRecords", которых игра не вызывала.
+	 */
+	int numRecordsInternal()
+			throws RecordStoreNotOpenException
+	{
+		if (!open) {
+		    throw new RecordStoreNotOpenException();
+		}
+
+		return size;
+	}
+
+
     public int getSize()
 			throws RecordStoreNotOpenException
 	{
