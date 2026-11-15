@@ -82,6 +82,7 @@ import org.microemu.device.EmulatorContext;
 import org.microemu.device.impl.DeviceDisplayImpl;
 import org.microemu.device.impl.DeviceImpl;
 import org.microemu.device.impl.Rectangle;
+import org.microemu.device.impl.SoftButton;
 import org.microemu.log.Logger;
 import org.microemu.log.StdOutAppender;
 import org.microemu.microedition.ImplFactory;
@@ -769,6 +770,27 @@ public class Common implements MicroEmulator, CommonInterface {
         }
     }
 
+    /**
+     * Форк arlecchino-midp-rt: размер экрана WxH, как у телефона. Полноэкранный
+     * Canvas получает весь экран, обычный — экран без полосы софт-клавиш снизу
+     * (они переезжают к нижнему краю). Тот же расчёт, что у Swing-окна при
+     * изменении размера (Main.setDeviceSize), теперь общий для --resizableDevice.
+     */
+    public static void setDisplaySize(DeviceDisplayImpl deviceDisplay, int width, int height) {
+        int menuh = 0;
+        Enumeration en = DeviceFactory.getDevice().getSoftButtons().elements();
+        while (en.hasMoreElements()) {
+            SoftButton button = (SoftButton) en.nextElement();
+            Rectangle paintable = button.getPaintable();
+            paintable.y = height - paintable.height;
+            // в списке и иконки прокрутки (12 px), и софт-клавиши (16 px):
+            // берём самую высокую, а не последнюю по порядку device.xml
+            menuh = Math.max(menuh, paintable.height);
+        }
+        deviceDisplay.setDisplayPaintable(new Rectangle(0, 0, width, height - menuh));
+        deviceDisplay.setDisplayRectangle(new Rectangle(0, 0, width, height));
+    }
+
     public boolean initParams(List params, DeviceEntry defaultDevice, Class defaultDeviceClass) {
         boolean defaultDeviceSelected = false;
 
@@ -900,7 +922,10 @@ public class Common implements MicroEmulator, CommonInterface {
                 setDevice(DeviceImpl.create(emulatorContext, classLoader, deviceDescriptorLocation, defaultDeviceClass));
                 DeviceDisplayImpl deviceDisplay = (DeviceDisplayImpl) DeviceFactory.getDevice().getDeviceDisplay();
                 if (overrideDeviceWidth != -1 && overrideDeviceHeight != -1) {
-                    deviceDisplay.setDisplayRectangle(new Rectangle(0, 0, overrideDeviceWidth, overrideDeviceHeight));
+                    // Форк arlecchino-midp-rt: upstream задавал здесь только полный
+                    // прямоугольник экрана, а область Canvas (paintable) оставалась
+                    // 176x176 из resizable/device.xml — игра видела 176x176 при кадре WxH
+                    setDisplaySize(deviceDisplay, overrideDeviceWidth, overrideDeviceHeight);
                 }
             } catch (IOException ex) {
                 Logger.error(ex);

@@ -367,3 +367,100 @@ fn build_synth_midlet_impl(work: &Path, color: u32, looping: bool) -> Result<Pat
     pack_jar(&cls_dir, &jar, Some(MIDLET_MANIFEST));
     Ok(jar)
 }
+
+// ---- midp-rt from the checkout ---------------------------------------------
+
+fn midp_rt_src() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("midp-rt")
+}
+
+fn asm_jar() -> Option<PathBuf> {
+    let lib = midp_rt_src().join("lib");
+    let mut jars: Vec<PathBuf> = std::fs::read_dir(&lib)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            let n = p.file_name().unwrap().to_string_lossy();
+            n.starts_with("asm") && n.ends_with(".jar")
+        })
+        .collect();
+    jars.sort();
+    jars.pop()
+}
+
+/// Compile midp-rt from the checkout into `<work>/build/midp-rt-classes` (classes +
+/// resources, run straight off the directory), with the ASM jar copied to
+/// `<work>/lib/`, the checkout layout `midprun::runtime_classpath` recognises.
+fn build_midp_rt(work: &Path, asm: &Path) -> Result<PathBuf, String> {
+    let out = work.join("build").join("midp-rt-classes");
+    let lib = work.join("lib");
+    std::fs::create_dir_all(&lib).map_err(|e| e.to_string())?;
+    std::fs::copy(asm, lib.join(asm.file_name().unwrap())).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let modules = [
+        "microemu-cldc",
+        "microemu-midp",
+        "microemu-javase",
+        "microemu-javase-swing",
+        "microemu-extensions/microemu-nokiaui",
+        "microemu-extensions/microemu-siemensapi",
+    ];
+    let mut srcs = Vec::new();
+    for m in modules {
+        let base = midp_rt_src().join(m).join("src").join("main");
+        let mut v = arlecchino::util::rglob_ext(&base.join("java"), "java");
+        srcs.append(&mut v);
+        let res = base.join("resources");
+        if res.is_dir() {
+            for f in arlecchino::util::walk_files(&res) {
+                let dst = out.join(f.strip_prefix(&res).unwrap());
+                std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
+                std::fs::copy(&f, &dst).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    srcs.sort();
+    let list = work.join("midp-rt-sources.txt");
+    std::fs::write(&list, srcs.iter().map(|p| s(p)).collect::<Vec<_>>().join("\n"))
+        .map_err(|e| e.to_string())?;
+    run(
+        &[
+            javac(),
+            "--release".into(),
+            "17".into(),
+            "-encoding".into(),
+            "UTF-8".into(),
+            "-nowarn".into(),
+            "-cp".into(),
+            s(asm),
+            "-d".into(),
+            s(&out),
+            format!("@{}", s(&list)),
+        ],
+        "javac (midp-rt)",
+    )?;
+    Ok(out)
+}
+
+/// midp-rt compiled from THIS checkout's `midp-rt/` sources (not the installed
+/// jar), once per test binary: the classes directory, usable wherever a
+/// `midp-rt.jar` path is expected (`midprun::runtime_classpath` finds the ASM jar).
+pub fn midp_rt_checkout_build() -> Result<PathBuf, String> {
+    static RT: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    RT.get_or_init(|| {
+        if !have(&javac()) || !have(&java()) {
+            return Err("javac/java not on PATH".into());
+        }
+        let asm = asm_jar().ok_or("midp-rt/lib/asm-*.jar missing")?;
+        build_midp_rt(&workdir("midp-rt-checkout"), &asm)
+    })
+    .clone()
+}
+
+/// The same build as a classpath (`<classes>:<asm jar>`).
+pub fn midp_rt_from_checkout() -> Result<String, String> {
+    let classes = midp_rt_checkout_build()?;
+    let cp = arlecchino::midprun::runtime_classpath(&classes);
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    Ok(cp.iter().map(|p| s(p)).collect::<Vec<_>>().join(sep))
+}

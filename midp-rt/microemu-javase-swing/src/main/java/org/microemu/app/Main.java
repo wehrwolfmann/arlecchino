@@ -984,18 +984,8 @@ public class Main extends JFrame {
 	}
 	
 	protected void setDeviceSize(DeviceDisplayImpl deviceDisplay, int width, int height) {
-	    // move the soft buttons
-	    int menuh = 0;
-	    Enumeration en = DeviceFactory.getDevice().getSoftButtons().elements();
-        while (en.hasMoreElements()) {
-            SoftButton button = (SoftButton) en.nextElement();
-            Rectangle paintable = button.getPaintable();
-            paintable.y = height - paintable.height;
-            menuh = paintable.height;
-        }
-        // resize the display area
-        deviceDisplay.setDisplayPaintable(new Rectangle(0, 0, width, height - menuh));
-        deviceDisplay.setDisplayRectangle(new Rectangle(0, 0, width, height));
+	    // move the soft buttons and resize the display area (shared with --resizableDevice)
+	    Common.setDisplaySize(deviceDisplay, width, height);
         ((SwingDisplayComponent) devicePanel.getDisplayComponent()).init();
         // update display
         MIDletAccess ma = MIDletBridge.getMIDletAccess();

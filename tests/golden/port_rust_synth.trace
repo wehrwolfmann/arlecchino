@@ -1,4 +1,5 @@
 RecordStore.open "synthstore"
+RecordStore.getNumRecords "synthstore" 0
 RecordStore.addRecord "synthstore" len=4 hex=41524c31
 RecordStore.close "synthstore"
 Display.setCurrent

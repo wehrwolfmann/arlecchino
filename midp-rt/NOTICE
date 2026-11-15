@@ -74,6 +74,14 @@ javax.microedition.lcdui.game.*, часть lcdui) — только LGPL 2.1. С
     flushGraphics пишет в трассу границу кадра "F n"; в режиме тиков "F n"
     без времени стены; служебные картинки ChoiceGroup создаются мимо
     Image.createImage и не попадают в трассу.
+  - 2026-11-15: --resizableDevice W H задаёт и область Canvas, а не только
+    полный экран (Common.setDisplaySize, общий с Main.setDeviceSize): обычный
+    Canvas — W x (H - полоса софт-клавиш), полноэкранный — W x H (было
+    176x176 из resizable/device.xml при любом W x H); Canvas.setFullScreenMode
+    сбрасывает запомненный размер у любого Canvas, а не только у GameCanvas;
+    служебный подсчёт записей RMS (RecordEnumerationImpl.rebuild — перечисление
+    и сохранение хранилища) идёт мимо трассы, в трассу попадает только
+    RecordStore.getNumRecords, вызванный игрой.
   - 2026-06-10: файлам upstream, шедшим без лицензионных headers, проставлены
     headers согласно лицензированию upstream (COPYING), с пометкой о форке.
 

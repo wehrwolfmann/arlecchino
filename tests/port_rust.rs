@@ -6,8 +6,8 @@
 //!   parameters show up in the Rust);
 //! * the generated crate builds, its headless run writes a call trace, and that
 //!   trace equals the committed golden one (`tests/golden/port_rust_synth.trace`,
-//!   240×320) and — when `midp-rt.jar` is installed — the trace midp-rt writes for
-//!   the original jar, line for line after canonicalisation.
+//!   240×320) and the trace midp-rt (built from this checkout) writes for the
+//!   original jar, line for line after canonicalisation.
 //!
 //! Needs `javac` and `java` (JDK 17+, for the AST helper); the build test also
 //! needs `cargo` and the `jrt` dependencies (fetched once, then cached).  Skips
@@ -199,8 +199,11 @@ fn translated_crate_builds_and_matches_the_reference_trace() {
         canon.lines.join("\n")
     );
 
-    let Some(midp_rt) = arlecchino::midprun::find_midp_rt(None, None) else {
-        return common::skip("midp-rt.jar not installed: compared with the golden trace only");
+    // the reference comes from midp-rt built from this checkout, not from an installed
+    // jar that may predate the runtime fixes this comparison relies on
+    let midp_rt = match common::midp_rt_checkout_build() {
+        Ok(p) => p,
+        Err(e) => return common::skip(&format!("midp-rt not buildable ({e}): compared with the golden trace only")),
     };
     let refw = w.join("midp-rt");
     std::fs::create_dir_all(&refw).unwrap();
@@ -208,9 +211,10 @@ fn translated_crate_builds_and_matches_the_reference_trace() {
         Ok(t) => t,
         Err(e) => return common::skip(&format!("headless midp-rt run unavailable: {e}")),
     };
-    // midp-rt answers Canvas.getWidth()/getHeight() with its own canvas size, which
-    // need not be the --resizableDevice size; the fixture's first call fills the whole
-    // canvas, so the reference itself says which size to give the port.
+    // midp-rt answers Canvas.getWidth()/getHeight() with the canvas area: for a normal
+    // (not full-screen) canvas that is the --resizableDevice screen minus the soft-key
+    // bar. The fixture's first call fills the whole canvas, so the reference itself
+    // says which size to give the port.
     let size = reference
         .lines()
         .find_map(|l| {

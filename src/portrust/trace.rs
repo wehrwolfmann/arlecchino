@@ -6,9 +6,9 @@
 //! * frame timestamps, `repaint`/`serviceRepaints`, comments, font metrics,
 //!   `getGameAction` and `Player.realize/prefetch` are dropped — they depend on
 //!   the host, not on the game;
-//! * `Font.getFont` and `translate 0 0` are dropped (midp-rt issues them itself), and
-//!   so is `RecordStore.getNumRecords`: midp-rt's file store calls it on its own
-//!   while it saves a record (RMS writes are still compared byte for byte);
+//! * `Font.getFont` and `translate 0 0` are dropped (midp-rt issues them itself);
+//!   RMS calls are all kept, and records are compared byte for byte (midp-rt no
+//!   longer traces the record counts it reads for its own enumeration and saving);
 //! * images and players are renumbered in order of appearance; ids listed in
 //!   `drop_ids` (objects midp-rt creates on its own) and, optionally, objects that
 //!   are never drawn or played, are left out;
@@ -45,7 +45,6 @@ fn is_noise(l: &str) -> bool {
         || l.starts_with("getGameAction")
         || l.starts_with("Player.realize")
         || l.starts_with("Player.prefetch")
-        || l.starts_with("RecordStore.getNumRecords")
         || l == "translate 0 0"
 }
 
