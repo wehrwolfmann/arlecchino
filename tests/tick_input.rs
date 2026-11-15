@@ -30,97 +30,14 @@ fn s(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
-fn midp_rt_src() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("midp-rt")
-}
-
-fn asm_jar() -> Option<PathBuf> {
-    let lib = midp_rt_src().join("lib");
-    let mut jars: Vec<PathBuf> = std::fs::read_dir(&lib)
-        .ok()?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            let n = p.file_name().unwrap().to_string_lossy();
-            n.starts_with("asm") && n.ends_with(".jar")
-        })
-        .collect();
-    jars.sort();
-    jars.pop()
-}
-
-/// Compile midp-rt from the checkout into `<work>/midp-rt-classes` (classes +
-/// resources, run straight off the directory).
-fn build_midp_rt(work: &Path, asm: &Path) -> Result<PathBuf, String> {
-    let out = work.join("midp-rt-classes");
-    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    let modules = [
-        "microemu-cldc",
-        "microemu-midp",
-        "microemu-javase",
-        "microemu-javase-swing",
-        "microemu-extensions/microemu-nokiaui",
-        "microemu-extensions/microemu-siemensapi",
-    ];
-    let mut srcs = Vec::new();
-    for m in modules {
-        let base = midp_rt_src().join(m).join("src").join("main");
-        let mut v = arlecchino::util::rglob_ext(&base.join("java"), "java");
-        srcs.append(&mut v);
-        let res = base.join("resources");
-        if res.is_dir() {
-            for f in arlecchino::util::walk_files(&res) {
-                let dst = out.join(f.strip_prefix(&res).unwrap());
-                std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
-                std::fs::copy(&f, &dst).map_err(|e| e.to_string())?;
-            }
-        }
-    }
-    srcs.sort();
-    let list = work.join("midp-rt-sources.txt");
-    std::fs::write(&list, srcs.iter().map(|p| s(p)).collect::<Vec<_>>().join("\n"))
-        .map_err(|e| e.to_string())?;
-    common::run(
-        &[
-            common::javac(),
-            "--release".into(),
-            "17".into(),
-            "-encoding".into(),
-            "UTF-8".into(),
-            "-nowarn".into(),
-            "-cp".into(),
-            s(asm),
-            "-d".into(),
-            s(&out),
-            format!("@{}", s(&list)),
-        ],
-        "javac (midp-rt)",
-    )?;
-    Ok(out)
-}
-
 struct Fixture {
     work: PathBuf,
     rt_cp: String,
     jar: PathBuf,
 }
 
-/// The runtime classpath, compiled once per test binary.
-fn runtime() -> Result<String, String> {
-    static RT: std::sync::OnceLock<Result<String, String>> = std::sync::OnceLock::new();
-    RT.get_or_init(|| {
-        if !common::have(&common::javac()) || !common::have(&common::java()) {
-            return Err("javac/java not on PATH".into());
-        }
-        let asm = asm_jar().ok_or("midp-rt/lib/asm-*.jar missing")?;
-        let classes = build_midp_rt(&common::workdir("ticks-rt"), &asm)?;
-        let sep = if cfg!(windows) { ";" } else { ":" };
-        Ok(format!("{}{sep}{}", s(&classes), s(&asm)))
-    })
-    .clone()
-}
-
 fn fixture(tag: &str) -> Result<Fixture, String> {
-    let rt_cp = runtime()?;
+    let rt_cp = common::midp_rt_from_checkout()?;
     let work = common::workdir(tag);
     let jar = common::build_synth_midlet_looping(&work, 0x00CC66)?;
     Ok(Fixture { rt_cp, work, jar })
