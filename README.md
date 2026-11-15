@@ -74,6 +74,10 @@ arlecchino difftest  <orig.jar> [rebuilt.jar] [--input SCRIPT] [-o OUT]
 arlecchino ai-fix    [OUT] [--dry-run] [--attempts 3] [--max-classes N] [--class REL]…
                      [--provider anthropic|openai|claude-code] [--model M]
                      [--base-url URL] [--no-semantic-gate] [--no-cache] [-y]
+arlecchino port-rust [OUT] [--src DIR] [--crate-dir DIR] [--crate-name N]
+                     [--map FILE.map]… [--api TABLE] [--classpath CP]
+                     [--jrt DIR] [--strict] [--report]
+arlecchino trace-diff <ref-trace> <port-trace> [--drop-ids 3,4] [--drop-unreferenced]
 ```
 
 `arlecchino <jar> …` is shorthand for `arlecchino decompile <jar> …` (back-compat).
@@ -384,6 +388,30 @@ credentials. The program is `claude` from `PATH`, or `ARLECCHINO_CLAUDE_BIN` /
 `timeout_secs` (default 600) bounds each call, and `claude_args = ["…"]` appends extra
 CLI arguments. The response cache and `--dry-run` behave as with the other providers.
 The same applies to `ai-rename` and `ai-annotate`.
+
+### `port-rust` — mechanical translation to Rust (experimental)
+
+Translates the merged tree of a previous `decompile` run (`OUT/merged`, or any Java
+tree with `--src`) into a Cargo crate (`OUT/rust` by default) on top of the `jrt`
+runtime crate (`jrt/` in this repository). `javac` attributes the tree first
+(`assets/JavacAstDump.java`, compiled once into `~/.arlecchino/helpers/port-rust`), so
+the generator knows the type of every expression and the target of every call: Java
+integer semantics, implicit widening, `switch` with fall-through, labelled jumps and
+`try`/`catch` come out exact. Platform calls are bound through a table
+(`assets/port-rust-api.tsv`, one line per MIDP/CLDC member; `--api` for another one).
+
+Names are kept, in Rust casing: class `GameEngine` → `game_engine::GameEngine`,
+`frameCounter` → `frame_counter`, static `maxLives` → `MAX_LIVES`; Rust keywords become
+raw identifiers. `--map` applies a name map in Sporeflower `.map` format (class, field,
+method and parameter names with `/* was … */` markers) while generating.
+
+Whatever is not translated (an API call the table lacks, a construct the generator does
+not handle yet) becomes a typed `jrt::todo_ai!` marker, so the crate still builds; the
+markers are listed in `residue.json` and counted in `report.txt` (`--report` prints
+it, `--strict` exits with status 1 if there is any). The crate has a `trace` binary
+that runs the game headless and writes a call trace in midp-rt's format, for a
+line-by-line comparison with the original jar under midp-rt (`arlecchino trace-diff`).
+Drawing goes to the trace only for now; `jrt::gfx::Backend` is where a renderer plugs in.
 
 ## GUI
 

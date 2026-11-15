@@ -299,7 +299,7 @@ const MIDLET_MANIFEST: &str = "Manifest-Version: 1.0\n\
 
 /// The full clean-room MIDP/CLDC stub: reuse the installed one when present, else
 /// build one INTO `work` (a test never writes to the user's home).
-fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
+pub fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
     if let Some(p) = arlecchino::midp_stub::stub_jar() {
         return Ok(p);
     }
@@ -315,11 +315,22 @@ fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
 /// one RecordStore write).  A different `color` is an intentionally different jar —
 /// the difftest FAIL fixture.
 pub fn build_synth_midlet(work: &Path, color: u32) -> Result<PathBuf, String> {
+    build_synth_midlet_impl(work, color, false)
+}
+
+/// The same MIDlet driven by a game-style loop thread (repaint + serviceRepaints per
+/// tick); every frame also records the paint index at which the last key press
+/// arrived (`fillRect <index> 0 1 1` in a midp-rt trace).
+pub fn build_synth_midlet_looping(work: &Path, color: u32) -> Result<PathBuf, String> {
+    build_synth_midlet_impl(work, color, true)
+}
+
+fn build_synth_midlet_impl(work: &Path, color: u32, looping: bool) -> Result<PathBuf, String> {
     if !have(&javac()) {
         return Err("javac not on PATH".into());
     }
     let stub = full_midp_stub(work)?;
-    let tag = format!("{:06x}", color & 0xFF_FFFF);
+    let tag = format!("{:06x}{}", color & 0xFF_FFFF, if looping { "_loop" } else { "" });
     let src_dir = work.join(format!("midlet_src_{tag}"));
     let cls_dir = work.join(format!("midlet_classes_{tag}"));
     std::fs::create_dir_all(&src_dir).map_err(|e| e.to_string())?;
@@ -328,7 +339,10 @@ pub fn build_synth_midlet(work: &Path, color: u32) -> Result<PathBuf, String> {
     let template = std::fs::read_to_string(fixtures_dir().join("synthjar").join("midlet").join("SynthMidlet.java"))
         .map_err(|e| e.to_string())?;
     let src = src_dir.join("SynthMidlet.java");
-    std::fs::write(&src, template.replace("@COLOR@", &format!("{:06X}", color & 0xFF_FFFF)))
+    let text = template
+        .replace("@COLOR@", &format!("{:06X}", color & 0xFF_FFFF))
+        .replace("@LOOP@", if looping { "true" } else { "false" });
+    std::fs::write(&src, text)
         .map_err(|e| e.to_string())?;
 
     run(

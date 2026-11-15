@@ -439,8 +439,17 @@ public class J2SEDeviceDisplay implements DeviceDisplayImpl
             J2SEGraphicsSurfaceDisplayComponent displayComponent =
                     (J2SEGraphicsSurfaceDisplayComponent) context.getDisplayComponent();
             J2SEGraphicsSurface surface = displayComponent.getGraphicsSurface();
+            if (surface == null) {
+                org.microemu.TickInput.boundary();
+            }
             if (surface != null) {
                 synchronized (surface) {
+                    // Форк arlecchino-midp-rt: flushGraphics — тоже граница
+                    // кадра/тика (у GameCanvas-игр кадры идут не через paint()):
+                    // "F n" в трассу и синхронная доставка событий тика
+                    // (headless --ticks). Под замком поверхности — тот же порядок
+                    // замков, что у paint() (поверхность, затем TickInput)
+                    org.microemu.TickInput.boundary();
                     surface.getGraphics().drawImage(
                             ((J2SEMutableImage) gameCanvasImage).getImage(), 
                             x, y, x + width, y + height, 

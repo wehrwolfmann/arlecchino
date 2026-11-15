@@ -30,6 +30,8 @@ import org.microemu.DisplayComponent;
 import org.microemu.MIDletBridge;
 import org.microemu.app.headless.CaptureOptions;
 import org.microemu.app.headless.FrameRecorder;
+import org.microemu.app.headless.InputScript;
+import org.microemu.app.headless.TickDriver;
 import org.microemu.app.ui.Message;
 import org.microemu.app.ui.noui.NoUiDisplayComponent;
 import org.microemu.app.util.DeviceEntry;
@@ -166,7 +168,34 @@ public class Headless {
 			org.microemu.app.shell.ShellFrameBridge.attachIfEnabled(app.displayComponent);
 		}
 
+		// Форк arlecchino-midp-rt: детерминированный режим --ticks N — ввод по
+		// номеру тика, синхронно на границе кадра (org.microemu.TickInput);
+		// драйвер ставится ДО старта MIDlet'а, чтобы не пропустить тик 0
+		TickDriver ticks = null;
+		if (opts.tickMode()) {
+			java.util.List events;
+			try {
+				events = (opts.inputsFile != null) ? InputScript.parse(opts.inputsFile)
+						: new java.util.ArrayList();
+			} catch (java.io.IOException e) {
+				System.err.println("inputs: " + e.getMessage());
+				System.exit(2);
+				return;
+			}
+			if (!events.isEmpty() && !InputScript.byTick(events)) {
+				System.err.println("inputs: в режиме --ticks события задаются полем tick, а не t_ms");
+				System.exit(2);
+				return;
+			}
+			ticks = new TickDriver(opts, recorder, events);
+			org.microemu.TickInput.install(ticks);
+		}
+
 		app.emulator.initMIDlet(true);
+
+		if (ticks != null) {
+			System.exit(ticks.await());
+		}
 
 		if (recorder != null) {
 			// non-daemon потоки MIDlet'а держат JVM — по концу захвата выходим сами

@@ -12,6 +12,8 @@
  *
  *  События ввода (InputScript) инжектятся best-effort по wall-clock: перед
  *  кадром, у которого now >= t_ms; t_ms отсчитывается от конца boot-wait.
+ *  Детерминированный режим (--ticks) снимает кадры не здесь, а на границах
+ *  тиков — см. TickDriver.
  */
 package org.microemu.app.headless;
 
@@ -72,6 +74,10 @@ public class FrameRecorder implements DisplayRepaintListener {
 			System.err.println("inputs: " + e.getMessage());
 			return 2;
 		}
+		if (InputScript.byTick(events)) {
+			System.err.println("inputs: события по tick требуют режима --ticks N");
+			return 2;
+		}
 		sleep(opts.bootWaitMs);
 		try {
 			long t0 = System.currentTimeMillis();
@@ -103,7 +109,7 @@ public class FrameRecorder implements DisplayRepaintListener {
 	}
 
 	// ───────────────────────────── один кадр ─────────────────────────────────
-	private void snapshot(int index) throws Exception {
+	void snapshot(int index) throws Exception {
 		BufferedImage img = copyCurrent();
 		int w = img.getWidth();
 		int h = img.getHeight();
@@ -162,13 +168,17 @@ public class FrameRecorder implements DisplayRepaintListener {
 	}
 
 	// ───────────────────────────── index.json ────────────────────────────────
-	private void writeIndex(CaptureOptions opts) throws IOException {
+	void writeIndex(CaptureOptions opts) throws IOException {
 		StringBuilder b = new StringBuilder();
 		b.append("{\n");
 		b.append("  \"engine\": \"midp-rt\",\n");
 		b.append("  \"jar\": ").append(q(opts.target)).append(",\n");
 		b.append("  \"frame_period_ms\": ").append(opts.periodMs).append(",\n");
 		b.append("  \"boot_wait_ms\": ").append(opts.bootWaitMs).append(",\n");
+		if (opts.tickMode()) {
+			// кадр i = экран после отрисовки тика i (frame_period_ms не действует)
+			b.append("  \"ticks\": ").append(opts.ticks).append(",\n");
+		}
 		b.append("  \"rms_dir\": ")
 				.append(opts.rmsDir == null ? "null" : q(opts.rmsDir.getPath()))
 				.append(",\n");

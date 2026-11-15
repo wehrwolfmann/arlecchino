@@ -13,6 +13,9 @@ repository = "https://github.com/wehrwolfmann/arlecchino"
 # compiled or linked into this crate, and it stays out of the packaged crate too.
 exclude = ["midp-rt/", "target/", "arlecchino_out/"]
 
+[workspace]
+members = [".", "jrt"]
+
 [[bin]]
 name = "arlecchino"
 path = "src/main.rs"

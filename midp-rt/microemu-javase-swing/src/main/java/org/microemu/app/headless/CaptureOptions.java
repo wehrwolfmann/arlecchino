@@ -11,7 +11,15 @@
  *    --period-ms MS      период между кадрами (по умолчанию 100)
  *    --boot-wait-ms MS   пауза после старта MIDlet до первого кадра (2000)
  *    --inputs FILE       JSON-скрипт ввода [{t_ms,key,action},...]
- *                        (формат difftest Arlecchino, docs/difftest_format.md)
+ *                        (формат difftest Arlecchino, docs/difftest_format.md);
+ *                        с --ticks — события по тикам [{tick,key,action},...]
+ *    --ticks N           детерминированный режим: прогнать ровно N тиков
+ *                        (границ кадра, см. org.microemu.TickInput) и выйти;
+ *                        ввод доставляется синхронно на своём тике, кадр
+ *                        (при --frames-dir) снимается на каждом тике,
+ *                        --frames/--period-ms/--boot-wait-ms не действуют
+ *    --tick-timeout-ms MS  сторож режима --ticks: выход с кодом 4, если
+ *                        новый тик не наступил за MS мс стены (30000)
  *    --rms DIR           file-backed RMS ПЛОСКО в DIR (расширение upstream
  *                        `--rms (file|memory)`: значение-путь = каталог)
  *
@@ -45,6 +53,11 @@ public class CaptureOptions {
 
 	public File inputsFile;
 
+	/** Режим тиков: сколько тиков прогнать (0 = обычный режим по часам стены). */
+	public int ticks = 0;
+
+	public int tickTimeoutMs = 30000;
+
 	public File rmsDir;
 
 	/** Последняя цель запуска (jar/jad/класс) — попадает в index.json. */
@@ -57,9 +70,13 @@ public class CaptureOptions {
 		return framesDir != null;
 	}
 
+	public boolean tickMode() {
+		return ticks > 0;
+	}
+
 	public static final String USAGE = "headless capture: "
 			+ "[--frames-dir DIR] [--frames N] [--period-ms MS] [--boot-wait-ms MS] "
-			+ "[--inputs FILE] [--rms (file|memory|DIR)] [--no-instrument] "
+			+ "[--inputs FILE] [--ticks N] [--tick-timeout-ms MS] [--rms (file|memory|DIR)] [--no-instrument] "
 			+ "[--resizableDevice W H] (game.jar | game.jad | MIDletClass)";
 
 	public static CaptureOptions parse(String[] args) {
@@ -74,6 +91,13 @@ public class CaptureOptions {
 				o.periodMs = intValue(args, ++i, a);
 			} else if (a.equals("--boot-wait-ms")) {
 				o.bootWaitMs = intValue(args, ++i, a);
+			} else if (a.equals("--ticks")) {
+				o.ticks = intValue(args, ++i, a);
+				if (o.ticks < 1) {
+					throw new IllegalArgumentException("--ticks: ожидается число >= 1\n" + USAGE);
+				}
+			} else if (a.equals("--tick-timeout-ms")) {
+				o.tickTimeoutMs = intValue(args, ++i, a);
 			} else if (a.equals("--inputs")) {
 				o.inputsFile = new File(value(args, ++i, a));
 			} else if (a.equals("--rms")) {
@@ -95,7 +119,7 @@ public class CaptureOptions {
 		if (!o.runtimeArgs.isEmpty()) {
 			o.target = (String) o.runtimeArgs.get(o.runtimeArgs.size() - 1);
 		}
-		if (o.enabled()) {
+		if (o.enabled() || o.tickMode()) {
 			o.rewriteAutoStart();
 		}
 		return o;

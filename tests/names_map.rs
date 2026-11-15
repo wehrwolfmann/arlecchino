@@ -88,14 +88,17 @@ fn hand_written_map_names_classes_members_and_locals() {
     assert_eq!(arlecchino::cli::main(Some(argv(&["apply-names", jar.to_str().unwrap(), "--names", map.to_str().unwrap(), "-o", out2.to_str().unwrap(), "--complete"]))), 0);
     let completed = std::fs::read_to_string(&map).unwrap();
     for line in original.lines().filter(|l| !l.trim().is_empty()) {
-        if line.contains("startApp") {
-            continue; // gains a `/* locals: … */` for its unnamed catch variable
-        }
         assert!(completed.contains(line), "line lost: {line}\n---\n{completed}");
     }
-    assert!(completed.contains("v1b"), "the catch variable is listed by its label:\n{completed}");
+    assert!(completed.len() > original.len() && completed.contains("/* was run */"), "the worksheet lists the members the map left out:\n{completed}");
     let reparsed = mapfile::parse(&map, &completed);
     assert!(reparsed.errors.is_empty(), "{:?}", reparsed.errors);
+    // `port-rust --map` reads the same file (it skips the locals comments)
+    let pr = arlecchino::portrust::names::parse_map(&completed);
+    let canvas = pr.iter().find(|c| c.name == "CheckerCanvas").expect("port-rust sees the class");
+    assert_eq!(canvas.was.as_deref(), Some("SynthCanvas"));
+    assert!(canvas.fields.iter().any(|f| f.name == "lastKeyCode" && f.was == "lastKey"));
+    assert!(canvas.methods.iter().any(|m| m.was.as_deref() == Some("paint")));
 
     // the renamed MIDlet behaves like the original
     if midprun::find_midp_rt(None, None).is_some() {

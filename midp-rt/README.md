@@ -102,6 +102,14 @@ java -Djava.awt.headless=true -cp build/midp-rt.jar:lib/asm-9.8.jar \
   `t_ms` отсчитывается от конца boot-wait; имена клавиш: `UP/DOWN/LEFT/RIGHT`,
   `NUM0`–`NUM9`, `STAR`, `POUND`, `FIRE`/`SELECT`/`SOFT3`, `SOFT_LEFT`,
   `SOFT_RIGHT`, `CLR`; число вместо имени = сырой MIDP-keyCode;
+- `--ticks N` — детерминированный режим: ровно N тиков (тик = граница кадра,
+  строка `F n` трассы: `paint()` или `GameCanvas.flushGraphics()`), затем
+  выход; события сценария задаются полем `tick` вместо `t_ms`
+  (`[{"tick":259,"key":"FIRE","action":"press"},…]`) и доставляются
+  синхронно сразу после `F n`, до отрисовки кадра n; при `--frames-dir` —
+  один кадр на тик; часы стены не участвуют (кроме сторожа
+  `--tick-timeout-ms MS`, по умолчанию 30000, выход 4). Подробно —
+  `docs/determinism-fixed-clock.md` (раздел «deterministic input») в Арлекино;
 - `--rms DIR` — расширение upstream `--rms (file|memory)`: значение-путь =
   file-backed RMS **плоско** в DIR (без `suite-<имя>` — store-файлы сравнимы
   между оригинальным и пересобранным jar даже при разных именах MIDlet-классов);
