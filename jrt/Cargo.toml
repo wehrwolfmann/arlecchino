@@ -17,3 +17,7 @@ path = "src/lib.rs"
 # sushi-shi/j2me-preservation-kit). Pinned: translated code relies on them matching
 # a real JVM bit for bit.
 j2me-jvm = { git = "https://github.com/sushi-shi/j2me-preservation-kit", rev = "cf241af1de14435fc95476f55254706f17a52b0a" }
+# PNG decoding and frame output of the software renderer (MIT OR Apache-2.0).
+png = "0.18"
+# tick scenarios (midp-rt `--inputs`)
+serde_json = "1"

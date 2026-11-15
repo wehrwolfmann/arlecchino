@@ -15,7 +15,9 @@ use std::rc::Rc;
 pub use j2me_jvm::JavaError;
 
 pub mod api;
+mod font_metrics;
 pub mod gfx;
+pub mod raster;
 
 // ---- exceptions ----------------------------------------------------------
 

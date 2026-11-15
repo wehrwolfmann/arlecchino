@@ -10,7 +10,8 @@
 //!
 //! Coordinates are passed exactly as the game passed them; [`State::translate`]
 //! is the accumulated `Graphics.translate` the backend must add, and
-//! [`State::clip`] is the clip as last set (also in translated coordinates).
+//! [`State::clip`] is the clip in device coordinates (the translation in force
+//! when it was set is already applied, as with an AWT clip).
 
 use std::cell::RefCell;
 
@@ -27,7 +28,7 @@ pub enum Target {
 pub struct State {
     /// `0xRRGGBB`.
     pub color: i32,
-    /// `(x, y, width, height)`.
+    /// `(x, y, width, height)` in device coordinates.
     pub clip: (i32, i32, i32, i32),
     /// `(tx, ty)`.
     pub translate: (i32, i32),
