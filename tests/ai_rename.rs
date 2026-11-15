@@ -43,7 +43,7 @@ fn iface(name: &str, methods: Vec<Member>) -> ClassInfo {
 }
 
 fn entry(kind: Kind, owner: &str, name: &str, desc: &str, new: &str) -> NameEntry {
-    NameEntry { kind, owner: owner.into(), name: name.into(), desc: desc.into(), new: new.into(), origin: "model".into(), status: String::new() }
+    NameEntry { kind, owner: owner.into(), name: name.into(), desc: desc.into(), local: String::new(), new: new.into(), origin: "model".into(), status: String::new() }
 }
 
 fn status<'a>(p: &'a names::Plan, kind: Kind, owner: &str, name: &str) -> &'a str {

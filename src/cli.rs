@@ -49,6 +49,9 @@ enum Cmd {
     /// OPTIONAL: model-written Javadoc for classes and non-obvious methods, inserted into a copy of the source (sends code to the configured model)
     #[command(name = "ai-annotate")]
     AiAnnotate(crate::ai::AiAnnotateArgs),
+    /// apply a hand-written name map (.map, Sporeflower format) to the bytecode: classes, members, parameters, locals (no model)
+    #[command(name = "apply-names")]
+    ApplyNames(crate::ai::ApplyNamesArgs),
 }
 
 #[derive(Args)]
@@ -964,7 +967,7 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
     // backward-compat: `arlecchino foo.jar ...` == `arlecchino decompile foo.jar ...`
     if let Some(first) = argv.first() {
         if !first.starts_with('-')
-            && !["decompile", "setup", "emulate", "run", "difftest", "ai-fix", "ai-rename", "ai-annotate"]
+            && !["decompile", "setup", "emulate", "run", "difftest", "ai-fix", "ai-rename", "ai-annotate", "apply-names"]
                 .contains(&first.as_str())
         {
             argv.insert(0, "decompile".into());
@@ -991,6 +994,7 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
         Some(Cmd::AiFix(a)) => crate::aifix::cmd_ai_fix(&a),
         Some(Cmd::AiRename(a)) => crate::ai::cmd_ai_rename(&a),
         Some(Cmd::AiAnnotate(a)) => crate::ai::cmd_ai_annotate(&a),
+        Some(Cmd::ApplyNames(a)) => crate::ai::cmd_apply_names(&a),
         None => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
             let _ = cmd.print_help();

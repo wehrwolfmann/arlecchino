@@ -49,11 +49,38 @@ pub fn ensure_helper(root: Option<&Path>) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// How locals are handled on top of the plan.
+#[derive(Debug, Clone, Default)]
+pub struct LocalOptions {
+    /// give every unnamed parameter/local its label (`v4`) in the bytecode
+    pub label_all: bool,
+    /// where the applier writes the label table (see [`super::mapfile::read_labels`])
+    pub labels_out: Option<PathBuf>,
+}
+
 /// Write the table next to `out_jar` and rewrite `jar` -> `out_jar`.
 pub fn apply(plan: &Plan, jar: &Path, out_jar: &Path, root: Option<&Path>) -> Result<String, String> {
+    apply_with(plan, jar, out_jar, root, &LocalOptions::default())
+}
+
+/// [`apply`] with local-variable options.  Messages about labels that a map names
+/// but the bytecode does not have come back after the summary line.
+pub fn apply_with(plan: &Plan, jar: &Path, out_jar: &Path, root: Option<&Path>, lo: &LocalOptions) -> Result<String, String> {
     let dir = ensure_helper(root)?;
     let table = out_jar.with_extension("table.tsv");
-    std::fs::write(&table, plan.applier_table()).map_err(|e| format!("{}: {e}", table.display()))?;
+    let mut text = plan.applier_table();
+    if lo.label_all || lo.labels_out.is_some() || !plan.locals.is_empty() {
+        for p in rename::resolver_classpath(None).split(PATHSEP).filter(|p| !p.is_empty()) {
+            text.push_str(&format!("classpath\t{p}\n"));
+        }
+    }
+    if lo.label_all {
+        text.push_str("labels\ton\n");
+    }
+    if let Some(p) = &lo.labels_out {
+        text.push_str(&format!("labels-out\t{}\n", p.display()));
+    }
+    std::fs::write(&table, text).map_err(|e| format!("{}: {e}", table.display()))?;
     let mut cp: Vec<String> = rename::asm_jars(root).iter().map(|j| j.to_string_lossy().into_owned()).collect();
     cp.push(dir.to_string_lossy().into_owned());
     let argv = vec![
@@ -72,5 +99,11 @@ pub fn apply(plan: &Plan, jar: &Path, out_jar: &Path, root: Option<&Path>) -> Re
     if r.status != Some(0) || !out_jar.exists() {
         return Err(format!("{APPLIER_CLASS} failed: {}", r.stderr.trim()));
     }
-    Ok(r.stdout.trim().to_string())
+    let warnings: Vec<&str> = r.stderr.lines().filter(|l| l.starts_with("warning:")).collect();
+    let mut msg = r.stdout.trim().to_string();
+    for w in warnings {
+        msg.push('\n');
+        msg.push_str(w);
+    }
+    Ok(msg)
 }
