@@ -3,8 +3,11 @@
 //! the translation and the trace of the original jar can be diffed frame by frame.
 //!
 //! Pixels are not produced here.  Every drawing call is also forwarded to the
-//! installed [`crate::gfx::Backend`] (none by default), which is where a real
-//! renderer plugs in.
+//! installed [`crate::gfx::Backend`] (none by default); [`crate::raster`] is the
+//! one that draws them like midp-rt does.
+//!
+//! Input comes either by the old "after the n-th distinct frame" schedule or, as
+//! in midp-rt's `--ticks` mode, by tick number ([`run_midlet_ticks`]).
 //!
 //! Semantics kept identical to `arlecchino difftest --fixed-clock`:
 //! `currentTimeMillis` is a virtual clock that starts at 1_000_000 ms and
@@ -31,11 +34,22 @@ struct Host {
     current: Peer,
     threads: Vec<Peer>,
     repaint_pending: bool,
+    /// `Display.setCurrent` not yet handled (midp-rt: a ShowNotify event).
+    pending_show: Option<Peer>,
+    /// The paint the handled ShowNotify asked for (not merged with later repaints).
+    show_paint: bool,
+    /// Inside showNotify of a ShowNotify event (its repaints merge into its paint).
+    in_show: bool,
     width: i32,
     height: i32,
     next_obj: i32,
     stores: HashMap<String, Vec<Option<Vec<i8>>>>,
     keys: Vec<(i32, i32, bool)>, // (after distinct frame n, key, pressed)
+    /// Tick mode (midp-rt `--ticks`): events by tick number, delivered at the boundary.
+    tick_mode: bool,
+    tick_events: Vec<TickEvent>,
+    /// Inside the delivery of a tick's events (a `repaint()` there is not queued).
+    delivering: bool,
     in_paint: bool,
     distinct: i32,
     last_body: Vec<String>,
@@ -52,11 +66,17 @@ thread_local! {
         current: Peer::default(),
         threads: vec![],
         repaint_pending: false,
+        pending_show: None,
+        show_paint: false,
+        in_show: false,
         width: 240,
         height: 320,
         next_obj: 1,
         stores: HashMap::new(),
         keys: vec![],
+        tick_mode: false,
+        tick_events: vec![],
+        delivering: false,
         in_paint: false,
         distinct: 0,
         last_body: vec![],
@@ -105,7 +125,6 @@ fn next_id() -> i32 {
 /// OS thread (cooperative: `Thread.sleep`/`serviceRepaints` are the yield points).
 /// Returns the trace lines.
 pub fn run_midlet(res_dir: &str, w: i32, h: i32, frames: i32, keys: Vec<(i32, i32, bool)>, clinit: fn(), midlet: fn() -> Peer) -> Vec<String> {
-    crate::install_hook();
     host(|x| {
         x.res_dir = PathBuf::from(res_dir);
         x.width = w;
@@ -113,11 +132,161 @@ pub fn run_midlet(res_dir: &str, w: i32, h: i32, frames: i32, keys: Vec<(i32, i3
         x.max_frames = frames;
         x.keys = keys;
     });
+    run(clinit, midlet)
+}
+
+/// One input event of a tick scenario (midp-rt `--inputs` with `tick`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TickEvent {
+    pub tick: i32,
+    pub key: i32,
+    pub pressed: bool,
+}
+
+/// Runs a MIDlet in midp-rt's tick mode (`Headless --ticks N --inputs F`): tick `n`
+/// is the frame boundary `F n`; the events of tick `n` are delivered right after
+/// it, synchronously and before frame `n` is painted, and a `repaint()` from their
+/// handlers does not queue an extra frame; the run stops at the boundary of tick
+/// `ticks`.
+pub fn run_midlet_ticks(res_dir: &str, w: i32, h: i32, ticks: i32, events: Vec<TickEvent>, clinit: fn(), midlet: fn() -> Peer) -> Vec<String> {
+    host(|x| {
+        x.res_dir = PathBuf::from(res_dir);
+        x.width = w;
+        x.height = h;
+        x.max_frames = ticks;
+        x.tick_mode = true;
+        x.tick_events = events;
+        x.trace[0] = format!("# jrt trace, ticks: {ticks}");
+    });
+    run(clinit, midlet)
+}
+
+/// midp-rt's key names (`InputScript`) as MIDP key codes of its default device.
+pub fn key_code(name: &str) -> Option<i32> {
+    Some(match name.to_ascii_uppercase().as_str() {
+        "UP" => -1,
+        "DOWN" => -2,
+        "LEFT" => -3,
+        "RIGHT" => -4,
+        "FIRE" | "SELECT" | "SOFT3" => -5,
+        "SOFT_LEFT" => -6,
+        "SOFT_RIGHT" => -7,
+        "CLR" => -8,
+        "STAR" => 42,
+        "POUND" => 35,
+        n if n.len() == 4 && n.starts_with("NUM") && n.as_bytes()[3].is_ascii_digit() => n.as_bytes()[3] as i32,
+        _ => return None,
+    })
+}
+
+/// Parses a tick scenario (`[{"tick": 259, "key": "FIRE", "action": "press"}, …]`;
+/// `key` may also be a raw key code, `action` is press, release or tap).  Events of
+/// one tick keep the order of the file, like midp-rt's stable sort.
+pub fn parse_tick_inputs(text: &str) -> Result<Vec<TickEvent>, String> {
+    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("inputs JSON: {e}"))?;
+    let arr = v.as_array().ok_or("inputs JSON: not an array")?;
+    let mut out = vec![];
+    for (i, e) in arr.iter().enumerate() {
+        let tick = e.get("tick").and_then(|t| t.as_i64()).ok_or(format!("inputs JSON: event {i} has no `tick`"))? as i32;
+        let key = match e.get("key") {
+            Some(serde_json::Value::String(s)) => key_code(s).ok_or(format!("inputs JSON: unknown key {s}"))?,
+            Some(serde_json::Value::Number(n)) => n.as_i64().ok_or(format!("inputs JSON: bad key in event {i}"))? as i32,
+            _ => return Err(format!("inputs JSON: event {i} has no `key`")),
+        };
+        let action = e.get("action").and_then(|a| a.as_str()).unwrap_or("press");
+        match action {
+            "press" => out.push(TickEvent { tick, key, pressed: true }),
+            "release" => out.push(TickEvent { tick, key, pressed: false }),
+            "tap" => {
+                out.push(TickEvent { tick, key, pressed: true });
+                out.push(TickEvent { tick, key, pressed: false });
+            }
+            other => return Err(format!("inputs JSON: unknown action {other}")),
+        }
+    }
+    out.sort_by_key(|e| e.tick);
+    Ok(out)
+}
+
+/// Entry point of a translated crate's `trace` binary:
+///
+/// `trace <res-dir> <trace-out> <width> <height> <frames> [keys] [--ticks]
+///  [--inputs ticks.json] [--frames-dir DIR]`
+///
+/// * `keys` — the old schedule `frame:code:d|u,…` (after the n-th distinct frame);
+/// * `--ticks` / `--inputs` — midp-rt's tick mode, `<frames>` ticks;
+/// * `--frames-dir` — rasterise ([`crate::raster`]) and write `frame_NNNN.png`,
+///   one per frame (in tick mode: frame i = the screen after tick i).
+pub fn run_cli(clinit: fn(), midlet: fn() -> Peer) {
+    let a: Vec<String> = std::env::args().collect();
+    let usage = "usage: trace <res-dir> <trace-out> <width> <height> <frames> [keys] [--ticks] [--inputs F] [--frames-dir D]";
+    if a.len() < 6 {
+        eprintln!("{usage}");
+        std::process::exit(2);
+    }
+    let n = |i: usize| a[i].parse::<i32>().unwrap_or_else(|_| {
+        eprintln!("{usage}");
+        std::process::exit(2)
+    });
+    let (w, h, frames) = (n(3), n(4), n(5));
+    let mut keys = vec![];
+    let mut ticks = false;
+    let mut inputs = None;
+    let mut frames_dir = None;
+    let mut i = 6;
+    while i < a.len() {
+        match a[i].as_str() {
+            "--ticks" => ticks = true,
+            "--inputs" if i + 1 < a.len() => {
+                i += 1;
+                inputs = Some(a[i].clone());
+                ticks = true;
+            }
+            "--frames-dir" if i + 1 < a.len() => {
+                i += 1;
+                frames_dir = Some(PathBuf::from(&a[i]));
+            }
+            s if !s.starts_with("--") => keys = parse_keys(s),
+            _ => {
+                eprintln!("{usage}");
+                std::process::exit(2);
+            }
+        }
+        i += 1;
+    }
+    if frames_dir.is_some() {
+        crate::raster::install(frames_dir);
+    }
+    let lines = if ticks {
+        let events = match inputs {
+            Some(p) => match std::fs::read_to_string(&p).map_err(|e| format!("{p}: {e}")).and_then(|t| parse_tick_inputs(&t)) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(2);
+                }
+            },
+            None => vec![],
+        };
+        run_midlet_ticks(&a[1], w, h, frames, events, clinit, midlet)
+    } else {
+        run_midlet(&a[1], w, h, frames, keys, clinit, midlet)
+    };
+    write_trace(&a[2], &lines);
+    let (skipped, _) = crate::raster::unsupported();
+    for (what, count) in skipped {
+        eprintln!("raster: not drawn: {what} x{count}");
+    }
+}
+
+fn run(clinit: fn(), midlet: fn() -> Peer) -> Vec<String> {
+    crate::install_hook();
     let r = crate::catch(|| {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             clinit();
             let m = midlet();
             m.get().start_app();
+            handle_show();
             loop {
                 let t = host(|x| if x.threads.is_empty() { None } else { Some(x.threads.remove(0)) });
                 match t {
@@ -176,6 +345,9 @@ pub fn write_trace(path: &str, lines: &[String]) {
 /// Idle event thread: delivers the next scheduled key regardless of its frame.
 /// Returns false when no key is left.
 fn deliver_next_key_now() -> bool {
+    if host(|h| h.tick_mode) {
+        return false; // tick mode: input exists only at frame boundaries
+    }
     let next = host(|h| if h.keys.is_empty() { None } else { Some(h.keys.remove(0)) });
     match next {
         Some((_, k, down)) => {
@@ -204,6 +376,9 @@ fn deliver_key(k: i32, down: bool) {
 /// Returns whether anything happened.
 fn pump() -> bool {
     let keys = host(|h| {
+        if h.tick_mode {
+            return vec![];
+        }
         // keys are scheduled "after the n-th distinct frame" (see scripts/frames.sh);
         // the open frame is judged tentatively, it is committed at the next paint
         let n = h.distinct + if h.body_start != 0 && frame_body(h) != h.last_body { 1 } else { 0 };
@@ -218,15 +393,20 @@ fn pump() -> bool {
         }
         due
     });
+    let shown = handle_show();
     let delivered = !keys.is_empty();
     for (k, down) in keys {
         deliver_key(k, down);
+    }
+    let show_paint = host(|h| std::mem::replace(&mut h.show_paint, false));
+    if show_paint {
+        paint_now();
     }
     let pending = host(|h| std::mem::replace(&mut h.repaint_pending, false));
     if pending {
         paint_now();
     }
-    delivered || pending
+    shown || delivered || show_paint || pending
 }
 
 fn trace_event(l: String) {
@@ -263,7 +443,7 @@ fn paint_now() {
         let stop = h.frame >= h.max_frames;
         if !stop {
             let f = h.frame;
-            h.trace.push(format!("F {f} t=0"));
+            h.trace.push(if h.tick_mode { format!("F {f}") } else { format!("F {f} t=0") });
             h.body_start = h.trace.len();
         }
         (h.current.clone(), stop)
@@ -271,6 +451,7 @@ fn paint_now() {
     if stop {
         std::panic::panic_any(Stop);
     }
+    deliver_tick_events();
     if cur.is_null() {
         return;
     }
@@ -282,6 +463,27 @@ fn paint_now() {
     cur.get().paint(g);
     host(|x| x.in_paint = false);
     gfx::with(|b| b.end_frame(frame));
+}
+
+/// Tick mode: the events of the tick that just began, before its frame is painted.
+fn deliver_tick_events() {
+    let due = host(|h| {
+        if !h.tick_mode {
+            return vec![];
+        }
+        let f = h.frame;
+        h.tick_events.retain(|e| e.tick >= f);
+        let n = h.tick_events.iter().take_while(|e| e.tick == f).count();
+        h.tick_events.drain(..n).collect::<Vec<_>>()
+    });
+    if due.is_empty() {
+        return;
+    }
+    host(|h| h.delivering = true);
+    for e in due {
+        deliver_key(e.key, e.pressed);
+    }
+    host(|h| h.delivering = false);
 }
 
 // ---- java.lang ---------------------------------------------------------------
@@ -537,6 +739,7 @@ pub struct GraphicsObj {
     /// The screen or a mutable image (`None` only for a default-constructed value).
     target: Option<gfx::Target>,
     color: i32,
+    /// In device coordinates, like an AWT clip: a later `translate` does not move it.
     clip: (i32, i32, i32, i32),
     tx: i32,
     ty: i32,
@@ -548,17 +751,16 @@ impl GraphicsObj {
         gfx::State { color: self.color, clip: self.clip, translate: (self.tx, self.ty), font }
     }
 }
-/// Writes the trace line (screen only, like midp-rt) and forwards the call to the backend.
+/// Writes the trace line and forwards the call to the backend.  midp-rt traces
+/// the calls on an image's Graphics as well as on the screen's.
 fn draw(g: &Graphics, line: impl FnOnce() -> String, call: impl FnOnce(&mut dyn gfx::Backend, gfx::Target, &gfx::State)) {
     let (target, st) = g.rd(|g| (g.target, g.state()));
     let Some(target) = target else { return };
-    if target == gfx::Target::Screen {
-        tr(line());
-    }
+    tr(line());
     gfx::with(|b| call(b, target, &st));
 }
 fn gtr(g: &Graphics, line: String) {
-    if g.rd(|g| g.target == Some(gfx::Target::Screen)) {
+    if g.rd(|g| g.target.is_some()) {
         tr(line);
     }
 }
@@ -574,13 +776,14 @@ pub fn g_get_color(g: &Graphics) -> i32 {
     g.rd(|g| g.color)
 }
 pub fn g_set_clip(g: &Graphics, x: i32, y: i32, w: i32, h: i32) {
-    g.wr(|g| g.clip = (x, y, w, h));
+    g.wr(|g| g.clip = (x + g.tx, y + g.ty, w, h));
     gtr(g, format!("setClip {x} {y} {w} {h}"));
 }
 pub fn g_clip_rect(g: &Graphics, x: i32, y: i32, w: i32, h: i32) {
     gtr(g, format!("clipRect {x} {y} {w} {h}"));
     g.wr(|g| {
         let (cx, cy, cw, ch) = g.clip;
+        let (x, y) = (x + g.tx, y + g.ty);
         let nx = cx.max(x);
         let ny = cy.max(y);
         let nr = (cx + cw).min(x + w);
@@ -589,10 +792,10 @@ pub fn g_clip_rect(g: &Graphics, x: i32, y: i32, w: i32, h: i32) {
     });
 }
 pub fn g_get_clip_x(g: &Graphics) -> i32 {
-    g.rd(|g| g.clip.0)
+    g.rd(|g| g.clip.0 - g.tx)
 }
 pub fn g_get_clip_y(g: &Graphics) -> i32 {
-    g.rd(|g| g.clip.1)
+    g.rd(|g| g.clip.1 - g.ty)
 }
 pub fn g_get_clip_width(g: &Graphics) -> i32 {
     g.rd(|g| g.clip.2)
@@ -616,8 +819,12 @@ pub fn g_get_translate_y(g: &Graphics) -> i32 {
 pub fn g_fill_rect(g: &Graphics, x: i32, y: i32, w: i32, h: i32) {
     draw(g, || format!("fillRect {x} {y} {w} {h}"), |b, t, s| b.fill_rect(t, s, x, y, w, h));
 }
+/// midp-rt draws (and traces) a rectangle as four `drawLine` calls.
 pub fn g_draw_rect(g: &Graphics, x: i32, y: i32, w: i32, h: i32) {
-    draw(g, || format!("drawRect {x} {y} {w} {h}"), |b, t, s| b.draw_rect(t, s, x, y, w, h));
+    g_draw_line(g, x, y, x + w, y);
+    g_draw_line(g, x + w, y, x + w, y + h);
+    g_draw_line(g, x + w, y + h, x, y + h);
+    g_draw_line(g, x, y + h, x, y);
 }
 pub fn g_draw_line(g: &Graphics, x: i32, y: i32, x2: i32, y2: i32) {
     draw(g, || format!("drawLine {x} {y} {x2} {y2}"), |b, t, s| b.draw_line(t, s, x, y, x2, y2));
@@ -716,8 +923,12 @@ pub fn image_get_width(i: &Image) -> i32 {
 pub fn image_get_height(i: &Image) -> i32 {
     i.rd(|i| i.h)
 }
+/// midp-rt resets the image's Graphics on every call (colour 0, no translation,
+/// full clip) and traces that reset.
 pub fn image_get_graphics(i: &Image) -> Graphics {
     let (id, w, h) = i.rd(|i| (i.id, i.w, i.h));
+    tr("setColor 0".into());
+    tr("translate 0 0".into());
     JRef::new(GraphicsObj { target: Some(gfx::Target::Image(id)), clip: (0, 0, w, h), ..Default::default() })
 }
 
@@ -735,36 +946,79 @@ pub fn font_get(face: i32, style: i32, size: i32) -> Font {
 pub fn font_default() -> Font {
     JRef::new(FontObj::default())
 }
-/// Metrics of AWT `SansSerif 10` as measured under midp-rt (machine-dependent!).
-pub fn font_height(_f: &Font) -> i32 {
-    14
+/// The measured row of `f` (see [`crate::font_metrics`]).
+fn font_row(f: &Font) -> &'static crate::font_metrics::FontRow {
+    let (face, style, size) = if f.is_null() { (0, 0, 0) } else { f.rd(|f| (f.face, f.style, f.size)) };
+    let face = if face == 32 || face == 64 { face } else { 0 };
+    let size = if size == 8 || size == 16 { size } else { 0 };
+    let style = style & 3;
+    crate::font_metrics::FONTS.iter().find(|r| r.0 == face && r.1 == style && r.2 == size).unwrap_or(&crate::font_metrics::FONTS[1])
 }
-pub fn font_baseline(_f: &Font) -> i32 {
-    11
+fn glyph_width(row: &crate::font_metrics::FontRow, c: u16) -> i32 {
+    let w = &row.5;
+    match c {
+        0x20..=0x7e => w[(c - 0x20) as usize] as i32,
+        0x400..=0x45f => w[95 + (c - 0x400) as usize] as i32,
+        _ => w[(b'n' - 0x20) as usize] as i32, // not measured: an average glyph
+    }
 }
-pub fn font_string_width(_f: &Font, s: &JStr) -> i32 {
-    s.length() * 6
+/// midp-rt's metrics (AWT fonts on the reference machine).
+pub fn font_height(f: &Font) -> i32 {
+    font_row(f).3
 }
-pub fn font_char_width(_f: &Font, _c: u16) -> i32 {
-    6
+pub fn font_baseline(f: &Font) -> i32 {
+    font_row(f).4
+}
+pub fn font_string_width(f: &Font, s: &JStr) -> i32 {
+    let row = font_row(f);
+    s.units().iter().map(|&c| glyph_width(row, c)).sum()
+}
+pub fn font_char_width(f: &Font, c: u16) -> i32 {
+    glyph_width(font_row(f), c)
 }
 
 pub fn display_get() {}
+/// midp-rt queues a ShowNotify event; the event thread handles it (see
+/// [`handle_show`]) as soon as the MIDlet's code lets it: here after `startApp`
+/// returns and at every later yield point.
 pub fn display_set_current(p: Peer) {
     trace_event("Display.setCurrent".into());
-    host(|h| h.current = p.clone());
     if !p.is_null() {
-        p.get().show_notify();
+        host(|h| h.pending_show = Some(p));
     }
-    host(|h| h.repaint_pending = true);
+}
+/// The ShowNotify event: hideNotify of the old screen, showNotify of the new one,
+/// which becomes current, and one paint for it.  Repaints from inside showNotify
+/// merge into that paint; a repaint made later by the game is a paint of its own,
+/// because midp-rt dispatches the ShowNotify paint at once.
+fn handle_show() -> bool {
+    let Some(p) = host(|h| h.pending_show.take()) else { return false };
+    let old = host(|h| std::mem::replace(&mut h.current, p.clone()));
+    if !old.is_null() {
+        old.get().hide_notify();
+    }
+    host(|h| h.in_show = true);
+    p.get().show_notify();
+    host(|h| h.in_show = false);
+    tr("repaint".into());
+    host(|h| h.show_paint = true);
+    true
 }
 pub fn canvas_repaint() {
     tr("repaint".into());
-    host(|h| h.repaint_pending = true);
+    // midp-rt: a repaint() while a tick's events are delivered is the frame that
+    // is painted right after the delivery, not an extra one
+    // A repaint before a pending ShowNotify is handled targets a screen that is not
+    // current yet, and midp-rt drops it.
+    host(|h| {
+        if !h.delivering && !h.in_show && h.pending_show.is_none() {
+            h.repaint_pending = true
+        }
+    });
 }
 pub fn canvas_service_repaints() {
     tr("serviceRepaints".into());
-    if host(|h| h.in_paint) {
+    if host(|h| h.in_paint || h.delivering) {
         return;
     }
     // the event thread also delivers input between paints (pump paints if needed)
@@ -870,9 +1124,12 @@ pub fn manager_create_player(s: &InputStream, ty: &JStr) -> Player {
     trace_event(format!("P {id} {} {n}b", quote(&ty.to_rust())));
     JRef::new(id)
 }
+/// midp-rt traces only `start` and `stop` of a player (and `setLoopCount`).
 pub fn player_event(p: &Player, m: &str) {
-    let id = p.rd(|i| *i);
-    trace_event(format!("Player.{m} #{id}"));
+    if m == "start" || m == "stop" {
+        let id = p.rd(|i| *i);
+        trace_event(format!("Player.{m} #{id}"));
+    }
 }
 pub fn player_set_loop_count(_p: &Player, c: i32) {
     trace_event(format!("Player.setLoopCount {c}"));

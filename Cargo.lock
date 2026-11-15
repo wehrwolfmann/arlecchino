@@ -283,6 +283,8 @@ name = "arlecchino-jrt"
 version = "0.1.0"
 dependencies = [
  "j2me-jvm",
+ "png",
+ "serde_json",
 ]
 
 [[package]]

@@ -231,3 +231,185 @@ fn translated_crate_builds_and_matches_the_reference_trace() {
         d.port.lines.join("\n")
     );
 }
+
+// ---- pixels ------------------------------------------------------------------
+
+const RENDER_TICKS: i32 = 24;
+
+/// The test's own images: RGBA with three alpha levels, and a palette with tRNS.
+fn render_images(dir: &Path) {
+    std::fs::create_dir_all(dir).unwrap();
+    let (w, h) = (12u32, 10u32);
+    let mut rgba = vec![];
+    for y in 0..h {
+        for x in 0..w {
+            let a = match (x + y) % 3 {
+                0 => 255,
+                1 => 128,
+                _ => 0,
+            };
+            rgba.extend_from_slice(&[(x * 20) as u8, (y * 25) as u8, 200, a]);
+        }
+    }
+    let write = |name: &str, color: png::ColorType, data: &[u8], palette: Option<(&[u8], &[u8])>| {
+        let f = std::fs::File::create(dir.join(name)).unwrap();
+        let mut e = png::Encoder::new(std::io::BufWriter::new(f), w, h);
+        e.set_color(color);
+        e.set_depth(png::BitDepth::Eight);
+        if let Some((pal, trns)) = palette {
+            e.set_palette(pal.to_vec());
+            e.set_trns(trns.to_vec());
+        }
+        e.write_header().unwrap().write_image_data(data).unwrap();
+    };
+    write("rgba.png", png::ColorType::Rgba, &rgba, None);
+    let pal: Vec<u8> = vec![255, 0, 0, 0, 255, 0, 0, 0, 255, 250, 250, 40];
+    let trns: Vec<u8> = vec![255, 0, 255, 255];
+    let idx: Vec<u8> = (0..w * h).map(|i| ((i / 3 + i / w) % 4) as u8).collect();
+    write("pal.png", png::ColorType::Indexed, &idx, Some((&pal, &trns)));
+}
+
+/// `(jar, source dir, MIDP stub, resource dir)` of the rendering MIDlet.
+fn render_midlet(w: &Path) -> Result<(PathBuf, PathBuf, PathBuf, PathBuf), String> {
+    if !common::have(&common::java()) || !common::have(&common::javac()) {
+        return Err("java/javac not on PATH".into());
+    }
+    let stub = common::full_midp_stub(w)?;
+    let src = w.join("render_src");
+    let classes = w.join("render_classes");
+    let res = w.join("render_res");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::copy(common::fixtures_dir().join("render").join("RenderMidlet.java"), src.join("RenderMidlet.java")).unwrap();
+    std::fs::create_dir_all(&classes).unwrap();
+    let ps = |p: &Path| p.to_string_lossy().into_owned();
+    common::run(
+        &[
+            common::javac(),
+            "--release".into(),
+            "8".into(),
+            "-nowarn".into(),
+            "-proc:none".into(),
+            "-cp".into(),
+            ps(&stub),
+            "-d".into(),
+            ps(&classes),
+            ps(&src.join("RenderMidlet.java")),
+        ],
+        "javac (RenderMidlet)",
+    )?;
+    render_images(&res);
+    // the jar: classes, the two images, a manifest
+    let jar = w.join("render.jar");
+    {
+        use std::io::Write;
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&jar).unwrap());
+        let o: zip::write::FileOptions<()> = zip::write::FileOptions::default();
+        z.start_file("META-INF/MANIFEST.MF", o).unwrap();
+        z.write_all(
+            b"Manifest-Version: 1.0\nMIDlet-Name: ArlecchinoRender\nMIDlet-Vendor: Arlecchino\nMIDlet-Version: 1.0\n\
+              MIDlet-1: Render, , RenderMidlet\nMicroEdition-Configuration: CLDC-1.1\nMicroEdition-Profile: MIDP-2.0\n",
+        )
+        .unwrap();
+        for dir in [&classes, &res] {
+            let mut files: Vec<PathBuf> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).collect();
+            files.sort();
+            for p in files {
+                z.start_file(p.file_name().unwrap().to_string_lossy(), o).unwrap();
+                z.write_all(&std::fs::read(&p).unwrap()).unwrap();
+            }
+        }
+        z.finish().unwrap();
+    }
+    Ok((jar, src, stub, res))
+}
+
+#[test]
+fn translated_frames_match_midp_rt_pixel_for_pixel() {
+    let w = common::workdir("port-rust-render");
+    let (jar, src, stub, res) = match render_midlet(&w) {
+        Ok(v) => v,
+        Err(e) => return common::skip(&e),
+    };
+    let crate_dir = w.join("render-port");
+    let t = Translation {
+        sources: src.clone(),
+        crate_dir: crate_dir.clone(),
+        crate_name: "render-port".into(),
+        classpath: stub.to_string_lossy().into_owned(),
+        maps: vec![],
+        api_table: portrust::API_TABLE.to_string(),
+        jrt_dependency: portrust::jrt_dependency(None),
+    };
+    let r = portrust::translate(&t).unwrap_or_else(|e| panic!("port-rust failed: {e}"));
+    assert_eq!(r.outcome.stats.todo_sites, 0, "{}", r.outcome.report);
+    // its own target dir: the trace test builds another crate's `trace` binary in
+    // port-rust-test, and the two tests run in parallel
+    let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("port-rust-test").join("render");
+    let out = std::process::Command::new(cargo())
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(crate_dir.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target)
+        .args(["--bin", "trace"])
+        .output()
+        .expect("cargo");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.status.success() {
+        if stderr.contains("failed to fetch") || stderr.contains("failed to load source") || stderr.contains("Could not resolve") {
+            return common::skip("jrt dependencies not available offline");
+        }
+        panic!("the translated crate does not build:\n{stderr}");
+    }
+
+    // one key press on tick 7, so the frames also show input arriving on its tick
+    let inputs = w.join("ticks.json");
+    std::fs::write(&inputs, "[{\"tick\": 7, \"key\": \"NUM5\", \"action\": \"tap\"}]\n").unwrap();
+    let port_frames = w.join("port-frames");
+    let port_trace = w.join("port-trace.txt");
+    let st = std::process::Command::new(target.join("debug").join("trace"))
+        .arg(&res)
+        .arg(&port_trace)
+        .args(["240", "320", &RENDER_TICKS.to_string(), "--inputs"])
+        .arg(&inputs)
+        .arg("--frames-dir")
+        .arg(&port_frames)
+        .status()
+        .expect("trace binary");
+    assert!(st.success());
+    let port = read(&port_trace);
+    assert!(!port.contains("# STOPPED"), "the translation stopped early:\n{port}");
+    assert_eq!(portrust::frames::list_frames(&port_frames).unwrap().len(), RENDER_TICKS as usize);
+
+    let rt_cp = match common::midp_rt_from_checkout() {
+        Ok(v) => v,
+        Err(e) => return common::skip(&format!("midp-rt not buildable ({e}): port frames not compared")),
+    };
+    let ref_frames = w.join("ref-frames");
+    let ref_trace = w.join("ref-trace.txt");
+    std::fs::create_dir_all(w.join("home")).unwrap();
+    let out = std::process::Command::new(common::java())
+        .arg("-Djava.awt.headless=true")
+        .arg(format!("-Duser.home={}", w.join("home").display()))
+        .arg(format!("-Dmidprt.trace={}", ref_trace.display()))
+        .arg(format!("-Dmidprt.trace.frames={RENDER_TICKS}"))
+        .arg("-cp")
+        .arg(&rt_cp)
+        .arg("org.microemu.app.Headless")
+        .args(["--ticks", &RENDER_TICKS.to_string(), "--tick-timeout-ms", "20000", "--inputs"])
+        .arg(&inputs)
+        .arg("--frames-dir")
+        .arg(&ref_frames)
+        .args(["--resizableDevice", "240", "320"])
+        .arg(&jar)
+        .output()
+        .expect("spawn java");
+    if out.status.code() != Some(0) {
+        return common::skip(&format!("headless midp-rt run failed: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    let d = portrust::frames::compare_dirs(&ref_frames, &port_frames, 0, Some(&w.join("diff"))).unwrap();
+    assert_eq!(d.frames.len(), RENDER_TICKS as usize);
+    let bad: Vec<String> = d.frames.iter().filter(|f| f.differing != 0).map(|f| format!("frame {}: {} px {:?}", f.index, f.differing, f.bbox)).collect();
+    assert!(bad.is_empty(), "frames differ from midp-rt (diff pictures in {}):\n{}", w.join("diff").display(), bad.join("\n"));
+    let td = trace::compare(&read(&ref_trace), &port, &[], true);
+    assert_eq!(td.differing, 0, "--- midp-rt\n{}\n--- port\n{}", td.reference.lines.join("\n"), td.port.lines.join("\n"));
+}

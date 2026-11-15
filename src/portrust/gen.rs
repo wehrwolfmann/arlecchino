@@ -1677,18 +1677,12 @@ pub fn generate(ast: &J, api: &ApiTable, map: &NameMap, out_dir: &Path, crate_na
     fs::write(
         out_dir.join("src/bin/trace.rs"),
         format!(
-            "//! Headless run that writes a midp-rt-style call trace.\n\
+            "//! Headless run that writes a midp-rt-style call trace (and, with\n\
+             //! --frames-dir, the frames as PNG).\n\
              //! usage: trace <res-dir> <trace-out> <width> <height> <frames> [keys: frame:code:d|u,...]\n\
+             //!        [--ticks] [--inputs ticks.json] [--frames-dir DIR]\n\
              fn main() {{\n\
-             \x20   let a: Vec<String> = std::env::args().collect();\n\
-             \x20   if a.len() < 6 {{\n\
-             \x20       eprintln!(\"usage: trace <res-dir> <trace-out> <width> <height> <frames> [keys]\");\n\
-             \x20       std::process::exit(2);\n\
-             \x20   }}\n\
-             \x20   let n = |i: usize| a[i].parse::<i32>().expect(\"a number\");\n\
-             \x20   let keys = a.get(6).map(|k| jrt::api::parse_keys(k)).unwrap_or_default();\n\
-             \x20   let lines = jrt::api::run_midlet(&a[1], n(3), n(4), n(5), keys, {lib_name}::static_init_all, {entry});\n\
-             \x20   jrt::api::write_trace(&a[2], &lines);\n\
+             \x20   jrt::api::run_cli({lib_name}::static_init_all, {entry});\n\
              }}\n"
         ),
     )
