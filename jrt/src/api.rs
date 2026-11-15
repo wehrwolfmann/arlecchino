@@ -751,17 +751,16 @@ impl GraphicsObj {
         gfx::State { color: self.color, clip: self.clip, translate: (self.tx, self.ty), font }
     }
 }
-/// Writes the trace line (screen only, like midp-rt) and forwards the call to the backend.
+/// Writes the trace line and forwards the call to the backend.  midp-rt traces
+/// the calls on an image's Graphics as well as on the screen's.
 fn draw(g: &Graphics, line: impl FnOnce() -> String, call: impl FnOnce(&mut dyn gfx::Backend, gfx::Target, &gfx::State)) {
     let (target, st) = g.rd(|g| (g.target, g.state()));
     let Some(target) = target else { return };
-    if target == gfx::Target::Screen {
-        tr(line());
-    }
+    tr(line());
     gfx::with(|b| call(b, target, &st));
 }
 fn gtr(g: &Graphics, line: String) {
-    if g.rd(|g| g.target == Some(gfx::Target::Screen)) {
+    if g.rd(|g| g.target.is_some()) {
         tr(line);
     }
 }
@@ -924,8 +923,12 @@ pub fn image_get_width(i: &Image) -> i32 {
 pub fn image_get_height(i: &Image) -> i32 {
     i.rd(|i| i.h)
 }
+/// midp-rt resets the image's Graphics on every call (colour 0, no translation,
+/// full clip) and traces that reset.
 pub fn image_get_graphics(i: &Image) -> Graphics {
     let (id, w, h) = i.rd(|i| (i.id, i.w, i.h));
+    tr("setColor 0".into());
+    tr("translate 0 0".into());
     JRef::new(GraphicsObj { target: Some(gfx::Target::Image(id)), clip: (0, 0, w, h), ..Default::default() })
 }
 

@@ -17,7 +17,9 @@
 //!   AWT rasterises them with its own curve and font engines.
 //!
 //! The screen starts black (midp-rt's surface fill), mutable images start fully
-//! transparent (midp-rt's `createImage(w, h)`; the MIDP specification says white).
+//! transparent (midp-rt's `createImage(w, h)`; the MIDP specification says white),
+//! keep their colours premultiplied and are drawn without their alpha, as under
+//! midp-rt.
 
 use crate::gfx::{Backend, State, Target};
 use std::cell::RefCell;
@@ -30,12 +32,16 @@ pub struct Pixels {
     pub width: i32,
     pub height: i32,
     pub argb: Vec<u32>,
+    /// A mutable image as midp-rt keeps it: the colour channels are stored
+    /// premultiplied by alpha, and drawing the image elsewhere ignores the alpha
+    /// (a never-touched pixel comes out black).
+    pub mutable: bool,
 }
 
 impl Pixels {
     pub fn new(width: i32, height: i32, fill: u32) -> Self {
         let n = (width.max(0) as usize) * (height.max(0) as usize);
-        Pixels { width, height, argb: vec![fill; n] }
+        Pixels { width, height, argb: vec![fill; n], mutable: false }
     }
     /// The buffer as RGB24 bytes (alpha dropped, like a `TYPE_INT_RGB` copy).
     pub fn rgb(&self) -> Vec<u8> {
@@ -77,6 +83,22 @@ fn blend(dst: u32, src: u32) -> u32 {
         }
         r
     };
+    (ra << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
+/// Source-over onto a premultiplied destination (Java2D's `IntArgbPre` loops):
+/// no division afterwards.
+fn blend_pre(dst: u32, src: u32) -> u32 {
+    let sa = src >> 24;
+    if sa == 0 {
+        return dst;
+    }
+    if sa == 0xff {
+        return src;
+    }
+    let df = 0xff - sa;
+    let ch = |shift: u32| mul8(sa, (src >> shift) & 0xff) + mul8(df, (dst >> shift) & 0xff);
+    let ra = sa + mul8(df, dst >> 24);
     (ra << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
@@ -238,9 +260,12 @@ fn blit(dst: &mut Pixels, st: &State, src: &Pixels, sx: i32, sy: i32, w: i32, h:
             if qx < 0 || qy < 0 || qx >= src.width || qy >= src.height {
                 continue;
             }
-            let s = src.argb[(qy * src.width + qx) as usize];
+            let mut s = src.argb[(qy * src.width + qx) as usize];
+            if src.mutable {
+                s |= 0xff00_0000;
+            }
             let i = ((oy + v) * dst.width + ox + u) as usize;
-            dst.argb[i] = blend(dst.argb[i], s);
+            dst.argb[i] = if dst.mutable { blend_pre(dst.argb[i], s) } else { blend(dst.argb[i], s) };
         }
     }
 }
@@ -330,7 +355,7 @@ impl Backend for Raster {
     fn create_image(&mut self, id: i32, width: i32, height: i32, png: Option<&[u8]>) {
         let px = match png {
             Some(b) => decode_png(b).unwrap_or_else(|| Pixels::new(width, height, 0)),
-            None => Pixels::new(width, height, 0),
+            None => Pixels { mutable: true, ..Pixels::new(width, height, 0) },
         };
         self.images.insert(id, px);
     }
@@ -444,7 +469,7 @@ mod tests {
     #[test]
     fn region_transforms_put_the_corner_where_midp_says() {
         // 2x1 source: left pixel red, right pixel green
-        let src = Pixels { width: 2, height: 1, argb: vec![0xffff_0000, 0xff00_ff00] };
+        let src = Pixels { width: 2, height: 1, argb: vec![0xffff_0000, 0xff00_ff00], mutable: false };
         let cases = [(0, vec![0xffff_0000, 0xff00_ff00]), (2, vec![0xff00_ff00, 0xffff_0000]), (5, vec![0xffff_0000, 0xff00_ff00]), (6, vec![0xff00_ff00, 0xffff_0000])];
         for (t, want) in cases {
             let mut d = Pixels::new(2, 2, 0xff00_0000);
@@ -452,6 +477,17 @@ mod tests {
             let got: Vec<u32> = d.argb.iter().copied().filter(|&p| p != 0xff00_0000).collect();
             assert_eq!(got, want, "transform {t}");
         }
+    }
+
+    #[test]
+    fn mutable_images_premultiply_and_draw_opaque() {
+        let mut m = Pixels { mutable: true, ..Pixels::new(1, 1, 0) };
+        let half = Pixels { width: 1, height: 1, argb: vec![0x8014_00c8], mutable: false };
+        blit(&mut m, &st((0, 0, 1, 1), (0, 0), 0), &half, 0, 0, 1, 1, 0, 0, 0);
+        assert_eq!(m.argb[0], 0x800a_0064);
+        let mut screen = Pixels::new(1, 1, 0xff20_3040);
+        blit(&mut screen, &st((0, 0, 1, 1), (0, 0), 0), &m, 0, 0, 1, 1, 0, 0, 0);
+        assert_eq!(screen.argb[0], 0xff0a_0064);
     }
 
     #[test]

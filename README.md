@@ -429,8 +429,9 @@ The renderer follows midp-rt, not an idealised MIDP: `fillRect`, rectangles and
 straight lines, `drawImage`/`drawRegion` (all transforms, anchors including midp-rt's
 `drawRegion` arithmetic), clip, translation and Java2D alpha blending are exact; slanted
 lines and triangles are approximate; arcs, round rectangles and text are not drawn (the
-`trace` binary prints how many such calls it skipped). The screen starts black and a
-mutable image starts transparent, as under midp-rt. `Font` metrics are a table measured
+`trace` binary prints how many such calls it skipped). The screen starts black; a
+mutable image starts transparent, keeps its colours premultiplied and is drawn without
+its alpha, as under midp-rt. `Font` metrics are a table measured
 under midp-rt (AWT fonts, so they hold for the machine they were measured on).
 
 ## GUI
