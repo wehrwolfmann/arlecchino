@@ -17,13 +17,21 @@ fn fake(tag: &str, body: &str) -> (PathBuf, PathBuf) {
         "#!/bin/sh\nd='{d}'\nprintf '%s\\n' \"$@\" > \"$d/args\"\ncat > \"$d/stdin\"\necho x >> \"$d/calls\"\n{body}\n",
         d = dir.display()
     );
-    std::fs::write(&bin, script).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    install_script(&bin, &script);
     (dir, bin)
+}
+
+/// Write an executable script so that THIS process never holds a writable
+/// descriptor to the file that will be executed.  Tests run in parallel threads: a
+/// thread that forks to start its own fake inherits every open descriptor until its
+/// exec, and executing a file someone still has open for writing fails with
+/// "Text file busy" (ETXTBSY).  So the text goes to a side file and a separate
+/// `install` process creates the executable from it.
+fn install_script(bin: &Path, text: &str) {
+    let tmp = bin.with_extension("src");
+    std::fs::write(&tmp, text).unwrap();
+    let st = std::process::Command::new("install").arg("-m").arg("0755").arg(&tmp).arg(bin).status().expect("run install");
+    assert!(st.success(), "install {} failed", bin.display());
 }
 
 fn cfg(bin: &Path, timeout: Duration) -> ProviderConfig {

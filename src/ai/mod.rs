@@ -16,6 +16,7 @@ pub mod annotate;
 pub mod apply;
 pub mod classfile;
 pub mod external;
+pub mod mapfile;
 pub mod names;
 pub mod provider;
 pub mod suggest;
@@ -25,7 +26,7 @@ use crate::util;
 use clap::Args;
 use names::{NameMap, World, MAP_VERSION};
 use provider::{CachedModel, LiveModel, ProviderConfig, ProviderOverrides};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Model selection flags shared by the AI subcommands.
@@ -137,28 +138,39 @@ pub struct AiRenameArgs {
     /// the jar whose classes the source tree was decompiled from (after `decompile`
     /// ran its member renamer, that is OUT/_rename/<name>.renamed.jar)
     pub jar: String,
-    /// decompiled source tree to show the model (e.g. OUT/merged); without it the
-    /// model sees signatures only
+    /// decompiled source tree to show the model (e.g. OUT/merged, or the
+    /// `decompiled/merged` of a previous run, which also shows local labels); without
+    /// it the model sees signatures only
     #[arg(long = "src")]
     pub src: Option<String>,
-    /// output directory (name map, report, renamed jar)
+    /// output directory (renamed jar, label table, report; the name map by default)
     #[arg(short = 'o', long = "out", default_value = "ai_rename_out")]
     pub out: String,
-    /// name map to start from / re-apply (default: OUT/ai-names.json if present)
+    /// name map: a `.map` file or a directory of them (Sporeflower format; default
+    /// OUT/mappings).  A `.json` file is read as an older map and its names are
+    /// carried into OUT/mappings
     #[arg(long = "names")]
     pub names: Option<String>,
     /// do not ask the model; just validate and apply the name map as it stands
     #[arg(long = "apply-only")]
     pub apply_only: bool,
-    /// ignore an existing name map (hand edits in it are lost)
+    /// set the existing name map aside (renamed to *.bak-N) and start a new one
     #[arg(long = "fresh")]
     pub fresh: bool,
     /// write the name map and report but do not rewrite the jar
     #[arg(long = "no-apply")]
     pub no_apply: bool,
+    /// leave unnamed locals to the decompilers (`var4`) instead of writing their
+    /// labels (`v4`) into the jar; the next round then cannot name locals
+    #[arg(long = "no-labels")]
+    pub no_labels: bool,
     /// after applying, run the full `decompile` pipeline on the renamed jar
     #[arg(long = "decompile")]
     pub decompile: bool,
+    /// extra argument for that `decompile` run (repeatable), e.g.
+    /// --decompile-arg=--config --decompile-arg=base8.toml
+    #[arg(long = "decompile-arg", allow_hyphen_values = true)]
+    pub decompile_args: Vec<String>,
     /// do not resolve JDK supertypes with javap (they then count as unknown)
     #[arg(long = "no-javap")]
     pub no_javap: bool,
@@ -166,7 +178,129 @@ pub struct AiRenameArgs {
     pub model: ModelArgs,
 }
 
+/// `apply-names`: a name map written by a person, applied without any model.
+#[derive(Args, Debug, Clone)]
+pub struct ApplyNamesArgs {
+    /// the jar the map was written for (OUT/_rename/<name>.renamed.jar after `decompile`)
+    pub jar: String,
+    /// the name map: a `.map` file or a directory of them
+    #[arg(long = "names", short = 'n')]
+    pub names: String,
+    /// output directory (renamed jar, label table, report)
+    #[arg(short = 'o', long = "out", default_value = "names_out")]
+    pub out: String,
+    /// see `ai-rename --no-labels`
+    #[arg(long = "no-labels")]
+    pub no_labels: bool,
+    /// add declarations for every symbol the map does not list yet (unnamed), so the
+    /// file becomes a complete worksheet
+    #[arg(long = "complete")]
+    pub complete: bool,
+    /// after applying, run the full `decompile` pipeline on the renamed jar
+    #[arg(long = "decompile")]
+    pub decompile: bool,
+    /// extra argument for that `decompile` run (repeatable)
+    #[arg(long = "decompile-arg", allow_hyphen_values = true)]
+    pub decompile_args: Vec<String>,
+    /// do not resolve JDK supertypes with javap
+    #[arg(long = "no-javap")]
+    pub no_javap: bool,
+}
+
+pub fn cmd_apply_names(a: &ApplyNamesArgs) -> i32 {
+    let r = AiRenameArgs {
+        jar: a.jar.clone(),
+        src: None,
+        out: a.out.clone(),
+        names: Some(a.names.clone()),
+        apply_only: true,
+        fresh: false,
+        no_apply: false,
+        no_labels: a.no_labels,
+        decompile: a.decompile,
+        decompile_args: a.decompile_args.clone(),
+        no_javap: a.no_javap,
+        model: ModelArgs::default(),
+    };
+    run_rename(&r, a.complete)
+}
+
 pub fn cmd_ai_rename(a: &AiRenameArgs) -> i32 {
+    run_rename(a, true)
+}
+
+/// Readable-name coverage of a jar under a plan.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Coverage {
+    /// (readable, total)
+    pub classes: (usize, usize),
+    pub fields: (usize, usize),
+    pub methods: (usize, usize),
+    pub locals: (usize, usize),
+}
+
+fn pct(x: (usize, usize)) -> String {
+    if x.1 == 0 {
+        "—".into()
+    } else {
+        format!("{}/{} ({:.0} %)", x.0, x.1, 100.0 * x.0 as f64 / x.1 as f64)
+    }
+}
+
+/// A name is readable when the plan gave it one, or it never looked machine-made,
+/// or it is fixed by a framework method it overrides (`run`, `paint`).
+pub fn coverage(world: &World, plan: Option<&names::Plan>, labels: &[mapfile::Label]) -> Coverage {
+    let mut c = Coverage::default();
+    let overrides_external = |owner: &str, n: &str, d: &str| {
+        world.ancestors(owner).iter().filter(|a| !world.in_jar(a)).any(|a| world.ext.known.get(a).map(|ci| ci.methods.iter().any(|m| m.name == n && m.desc == d)).unwrap_or(false))
+    };
+    for (cn, ci) in world.classes {
+        let simple = names::simple_name(cn);
+        if !simple.chars().all(|ch| ch.is_ascii_digit()) {
+            let named = plan.map(|p| p.classes.contains_key(cn)).unwrap_or(false);
+            c.classes.1 += 1;
+            if named || !names::looks_obfuscated(simple) {
+                c.classes.0 += 1;
+            }
+        }
+        for f in ci.fields.iter().filter(|f| !f.is_synthetic()) {
+            c.fields.1 += 1;
+            let named = plan.map(|p| p.fields.contains_key(&(cn.clone(), f.name.clone()))).unwrap_or(false);
+            if named || !names::looks_obfuscated(&f.name) {
+                c.fields.0 += 1;
+            }
+        }
+        for m in ci.methods.iter().filter(|m| !m.is_synthetic() && m.name != "<init>" && m.name != "<clinit>") {
+            c.methods.1 += 1;
+            let named = plan.map(|p| p.methods.contains_key(&(cn.clone(), m.name.clone(), m.desc.clone()))).unwrap_or(false);
+            if named || !names::looks_obfuscated(&m.name) || overrides_external(cn, &m.name, &m.desc) {
+                c.methods.0 += 1;
+            }
+        }
+    }
+    for l in labels {
+        c.locals.1 += 1;
+        if plan.map(|p| p.locals.contains_key(&(l.owner.clone(), l.method.clone(), l.desc.clone(), l.label.clone()))).unwrap_or(false) {
+            c.locals.0 += 1;
+        }
+    }
+    c
+}
+
+fn set_aside(path: &Path) -> Option<PathBuf> {
+    if !path.exists() {
+        return None;
+    }
+    for i in 1.. {
+        let bak = PathBuf::from(format!("{}.bak-{i}", path.display()));
+        if !bak.exists() {
+            return std::fs::rename(path, &bak).ok().map(|_| bak);
+        }
+    }
+    None
+}
+
+fn run_rename(a: &AiRenameArgs, complete: bool) -> i32 {
     let jar = util::absolutize(Path::new(&a.jar));
     let out = util::absolutize(Path::new(&a.out));
     if !jar.exists() {
@@ -202,31 +336,69 @@ pub fn cmd_ai_rename(a: &AiRenameArgs) -> i32 {
         );
     }
 
+    // ── the name map ────────────────────────────────────────────────────────
     let jar_sha = crate::diffrun::sha256_hex(&std::fs::read(&jar).unwrap_or_default());
-    let map_path = a.names.as_ref().map(|p| util::absolutize(Path::new(p))).unwrap_or_else(|| out.join("ai-names.json"));
-    let mut map = if !a.fresh && map_path.exists() {
-        match NameMap::load(&map_path) {
+    let names_path = a.names.as_ref().map(|p| util::absolutize(Path::new(p))).unwrap_or_else(|| out.join("mappings"));
+    let legacy = names_path.extension().map(|e| e == "json").unwrap_or(false);
+    let map_target = if legacy { out.join("mappings") } else { names_path.clone() };
+    if a.fresh {
+        if let Some(b) = set_aside(&map_target) {
+            println!("   --fresh: previous map set aside as {}", b.display());
+        }
+    }
+    let mut map_errors: Vec<String> = Vec::new();
+    let mut map = NameMap { version: MAP_VERSION, jar_sha256: jar_sha.clone(), entries: vec![] };
+    if legacy && !a.fresh && names_path.exists() {
+        match NameMap::load(&names_path) {
             Ok(m) => {
                 if !m.jar_sha256.is_empty() && m.jar_sha256 != jar_sha {
-                    println!("   warning: {} was made for a different jar; entries that do not match are rejected", map_path.display());
+                    println!("   warning: {} was made for a different jar; entries that do not match are rejected", names_path.display());
                 }
-                println!("   name map: {} ({} entries)", map_path.display(), m.entries.len());
-                m
+                map.entries = m.entries;
             }
             Err(e) => {
                 println!("ai-rename: {e}");
                 return 2;
             }
         }
-    } else {
-        NameMap { version: MAP_VERSION, jar_sha256: jar_sha.clone(), entries: vec![] }
+    }
+    let files = match mapfile::load(&map_target) {
+        Ok(f) => f,
+        Err(e) => {
+            println!("ai-rename: {e}");
+            return 2;
+        }
     };
-    map.jar_sha256 = jar_sha;
+    let semantic: usize = files.iter().map(|f| f.semantic).sum();
+    {
+        let (entries, errs) = mapfile::entries(&world, &files);
+        map_errors.extend(errs);
+        map.merge_new(entries);
+    }
+    if !files.is_empty() {
+        println!("   name map: {} ({} file(s), {} names, {} semantic annotation(s))", map_target.display(), files.len(), map.entries.len(), semantic);
+    } else if a.names.is_some() && !legacy {
+        println!("ai-rename: no .map files at {}", map_target.display());
+        if a.apply_only {
+            return 2;
+        }
+    }
+    for e in map_errors.iter().take(20) {
+        println!("   map: {e}");
+    }
+    if map_errors.len() > 20 {
+        println!("   map: … {} more (see the report)", map_errors.len() - 20);
+    }
+    let labels_path = out.join("labels.tsv");
+    let mut labels = mapfile::read_labels(&labels_path);
+    let before = coverage(&world, None, &labels);
 
+    // ── the model ───────────────────────────────────────────────────────────
     let mut suggest_report = None;
     let mut usage = None;
     let mut cache_stats = (0, 0);
     let mut cfg_id = String::from("(none)");
+    let mut auto: BTreeSet<String> = BTreeSet::new();
     if !a.apply_only {
         let cfg = match a.model.resolve() {
             Ok(c) => c,
@@ -236,25 +408,31 @@ pub fn cmd_ai_rename(a: &AiRenameArgs) -> i32 {
             }
         };
         cfg_id = cfg.id();
-        let jobs = suggest::collect_jobs(&world, src.as_deref());
-        let opt = suggest::Options { batch_tokens: a.model.batch_tokens, reply_tokens: cfg.max_tokens.min(8_000), ..Default::default() };
+        let pre = names::plan(&world, &map);
+        // a source tree decompiled from the renamed jar shows the new names
+        let renamed_src = src.as_ref().map(|s| pre.classes.values().any(|c| s.join(format!("{c}.java")).exists())).unwrap_or(false);
+        let ctx = suggest::Context {
+            plan: if renamed_src { Some(&pre) } else { None },
+            labels: &labels,
+            named: map.entries.iter().map(|e| e.key()).collect(),
+        };
+        let jobs = suggest::collect_jobs_with(&world, src.as_deref(), &ctx);
+        let opt = suggest::Options { batch_tokens: a.model.batch_tokens, reply_tokens: cfg.max_tokens.min(16_000), ..Default::default() };
         let nsym: usize = jobs.iter().map(|j| j.symbols.len()).sum();
+        let nloc: usize = jobs.iter().map(|j| j.symbols.iter().filter(|s| s.kind == names::Kind::Local).count()).sum();
         let nbatches = suggest::batches(&jobs, &world, &opt).len();
-        println!("   to name: {nsym} symbols in {} files -> {nbatches} request(s)", jobs.len());
+        println!("   to name: {nsym} symbols ({nloc} parameters/locals) in {} files -> {nbatches} request(s)", jobs.len());
         if src.is_none() {
             println!("   note: no --src — the model sees signatures only (names will be weaker)");
+        } else if nloc == 0 && !labels.is_empty() {
+            println!("   note: the source shows no local labels — pass the `decompiled/merged` of the previous run to name locals");
         }
         if let Some(code) = gate("ai-rename", "the decompiled source of the jar's obfuscated classes", &cfg, &a.model) {
             return code;
         }
-        let mut glossary: BTreeMap<String, String> = map
-            .entries
-            .iter()
-            .filter(|e| e.kind == names::Kind::Class)
-            .map(|e| (e.owner.clone(), e.new.clone()))
-            .collect();
+        let mut glossary: BTreeMap<String, String> = pre.classes.iter().map(|(o, n)| (o.clone(), names::simple_name(n).to_string())).collect();
         if a.model.dry_run {
-            save_prompts(&out.join("ai-prompts"), &jobs, &world, &opt, &glossary);
+            save_prompts(&out.join("ai-prompts"), &jobs, &world, &opt, &glossary, ctx.plan);
         }
         let live: Option<LiveModel> = if a.model.dry_run || jobs.is_empty() {
             None
@@ -271,37 +449,56 @@ pub fn cmd_ai_rename(a: &AiRenameArgs) -> i32 {
             Some(m) => Model::Live(CachedModel::new(m as &dyn ChatModel, &a.model.cache_dir())),
             None => Model::Offline(CachedModel::offline(&cfg.id(), &a.model.cache_dir())),
         };
-        let (entries, rep) = suggest::run(model.get(), &world, &jobs, &opt, &mut glossary);
+        let (entries, rep) = suggest::run_with(model.get(), &world, &jobs, &opt, &mut glossary, ctx.plan);
         cache_stats = model.get().stats();
         usage = live.as_ref().map(|m| m.usage());
+        for e in &entries {
+            match e.kind {
+                names::Kind::Field => auto.insert(format!("f {} {}", e.owner, e.name)),
+                names::Kind::Method => auto.insert(format!("m {} {}{}", e.owner, e.name, e.desc)),
+                _ => false,
+            };
+        }
         let added = map.merge_new(entries);
         println!("   model proposed {added} new names ({} requests, {} cache hits)", rep.requests, cache_stats.0);
         suggest_report = Some(rep);
     }
 
     let plan = names::plan(&world, &map);
-    if let Err(e) = plan.map.save(&map_path) {
+    if let Err(e) = plan.map.save(&out.join("ai-names.json")) {
         println!("ai-rename: {e}");
         return 2;
     }
     let pg = out.join("ai-names.mapping.txt");
     let _ = std::fs::write(&pg, names::proguard_mapping(&world, &plan));
-    println!("   plan: {} applied, {} rejected -> {}", plan.applied, plan.rejected, map_path.display());
+    println!("   plan: {} applied, {} rejected", plan.applied, plan.rejected);
 
+    // ── the jar ─────────────────────────────────────────────────────────────
     let mut applied_jar = None;
-    let apply_msg;
+    let mut apply_msg;
     if a.no_apply || a.model.dry_run {
-        apply_msg = "not applied (--no-apply / --dry-run)".into();
-    } else if plan.is_empty() {
+        apply_msg = "not applied (--no-apply / --dry-run)".to_string();
+    } else if plan.is_empty() && a.no_labels {
         apply_msg = "nothing to apply".into();
     } else {
         let stem = jar.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let out_jar = out.join(format!("{stem}.ai-renamed.jar"));
-        match apply::apply(&plan, &jar, &out_jar, None) {
+        let lo = apply::LocalOptions { label_all: !a.no_labels, labels_out: Some(labels_path.clone()) };
+        match apply::apply_with(&plan, &jar, &out_jar, None, &lo) {
             Ok(msg) => {
-                println!("   applied: {msg} -> {}", out_jar.display());
-                apply_msg = format!("{msg} -> `{}`", out_jar.display());
+                let mut lines = msg.lines();
+                let head = lines.next().unwrap_or("").to_string();
+                println!("   applied: {head} -> {}", out_jar.display());
+                apply_msg = format!("{head} -> `{}`", out_jar.display());
+                let warns: Vec<&str> = lines.collect();
+                if !warns.is_empty() {
+                    println!("   {} applier warning(s), see the report", warns.len());
+                    apply_msg.push_str("\n\n```\n");
+                    apply_msg.push_str(&warns.join("\n"));
+                    apply_msg.push_str("\n```");
+                }
                 applied_jar = Some(out_jar);
+                labels = mapfile::read_labels(&labels_path);
             }
             Err(e) => {
                 println!("   apply FAILED: {e}");
@@ -310,7 +507,51 @@ pub fn cmd_ai_rename(a: &AiRenameArgs) -> i32 {
         }
     }
 
-    let report = render_rename_report(&jar, &cfg_id, &plan, suggest_report.as_ref(), usage, cache_stats, &apply_msg);
+    // ── the map, brought up to date without touching what a person wrote ───
+    let mut want = mapfile::wanted(&world, &plan, &labels);
+    if !complete {
+        // only what the files or the plan name — no worksheet lines for the rest
+        want.classes.retain(|c, n| plan.classes.contains_key(c) || n != names::simple_name(c));
+        want.fields.retain(|(o, f, _), _| plan.fields.contains_key(&(o.clone(), f.clone())));
+        want.methods.retain(|k, _| plan.methods.contains_key(k) || plan.locals.keys().any(|(o, m, d, _)| (o, m, d) == (&k.0, &k.1, &k.2)));
+        for (k, lw) in want.locals.iter_mut() {
+            lw.retain(|l, _| plan.locals.contains_key(&(k.0.clone(), k.1.clone(), k.2.clone(), l.clone())));
+        }
+        want.locals.retain(|_, lw| !lw.is_empty());
+        let keep: BTreeSet<String> = want.methods.keys().map(|k| k.0.clone()).chain(want.fields.keys().map(|k| k.0.clone())).chain(want.locals.keys().map(|k| k.0.clone())).collect();
+        want.classes.retain(|c, _| plan.classes.contains_key(c) || keep.contains(c));
+    }
+    let changes = mapfile::patch(&world, &plan, &files, &want, &map_target, &auto);
+    if !a.model.dry_run {
+        if !map_target.extension().map(|e| e == "map").unwrap_or(false) {
+            let _ = std::fs::create_dir_all(&map_target);
+        }
+        for (p, text) in &changes {
+            if let Err(e) = std::fs::write(p, text) {
+                println!("ai-rename: {}: {e}", p.display());
+                return 2;
+            }
+        }
+    }
+    println!("   name map: {} file(s) updated -> {}", changes.len(), map_target.display());
+    let after = coverage(&world, Some(&plan), &labels);
+    let before = Coverage { locals: (0, after.locals.1.max(before.locals.1)), ..before };
+    println!(
+        "   readable names before -> after: classes {} -> {}, methods {} -> {}, fields {} -> {}, parameters/locals {} -> {}",
+        pct(before.classes),
+        pct(after.classes),
+        pct(before.methods),
+        pct(after.methods),
+        pct(before.fields),
+        pct(after.fields),
+        pct(before.locals),
+        pct(after.locals)
+    );
+    if semantic > 0 {
+        println!("   note: {semantic} semantic annotation(s) (domains/flags) in the map — applied by Sporeflower (`sporeflower {} OUT --mappings {}`), not by the bytecode applier", jar.display(), map_target.display());
+    }
+
+    let report = render_rename_report(&jar, &cfg_id, &plan, suggest_report.as_ref(), usage, cache_stats, &apply_msg, &map_target, &map_errors, (before, after), semantic);
     let _ = std::fs::write(out.join("ai-rename-report.md"), report);
     println!("   report: {}", out.join("ai-rename-report.md").display());
     if a.model.dry_run {
@@ -320,12 +561,13 @@ pub fn cmd_ai_rename(a: &AiRenameArgs) -> i32 {
     if a.decompile {
         if let Some(j) = &applied_jar {
             println!("\n== decompiling the renamed jar ==");
-            let argv = vec![
+            let mut argv = vec![
                 "decompile".to_string(),
                 j.to_string_lossy().into_owned(),
                 "-o".to_string(),
                 out.join("decompiled").to_string_lossy().into_owned(),
             ];
+            argv.extend(a.decompile_args.iter().cloned());
             return crate::cli::main(Some(argv));
         }
     }
@@ -335,16 +577,17 @@ pub fn cmd_ai_rename(a: &AiRenameArgs) -> i32 {
     0
 }
 
-fn save_prompts(dir: &Path, jobs: &[suggest::Job], world: &World, opt: &suggest::Options, glossary: &BTreeMap<String, String>) {
+fn save_prompts(dir: &Path, jobs: &[suggest::Job], world: &World, opt: &suggest::Options, glossary: &BTreeMap<String, String>, plan: Option<&names::Plan>) {
     let _ = std::fs::create_dir_all(dir);
     for (i, b) in suggest::batches(jobs, world, opt).iter().enumerate() {
         let batch: Vec<&suggest::Job> = b.iter().map(|&k| &jobs[k]).collect();
-        let (req, _) = suggest::build_request(&batch, world, glossary, opt);
+        let (req, _) = suggest::build_request_with(&batch, world, glossary, opt, plan);
         let text = format!("=== SYSTEM ===\n{}\n\n=== USER ===\n{}", req.system, req.messages[0].content);
         let _ = std::fs::write(dir.join(format!("batch-{:03}.txt", i + 1)), text);
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_rename_report(
     jar: &Path,
     model: &str,
@@ -353,8 +596,12 @@ fn render_rename_report(
     usage: Option<provider::Usage>,
     cache: (u64, u64),
     apply_msg: &str,
+    map_target: &Path,
+    map_errors: &[String],
+    cov: (Coverage, Coverage),
+    semantic: usize,
 ) -> String {
-    let mut s = format!("# ai-rename report\n\n- jar: `{}`\n- model: `{model}`\n", jar.display());
+    let mut s = format!("# ai-rename report\n\n- jar: `{}`\n- model: `{model}`\n- name map: `{}`\n", jar.display(), map_target.display());
     if let Some(r) = rep {
         s.push_str(&format!("- requests: {} (cache hits {}, misses {})\n", r.requests, cache.0, cache.1));
     }
@@ -362,13 +609,39 @@ fn render_rename_report(
         s.push_str(&format!("- tokens spent: {} in / {} out over {} API calls\n", u.input_tokens, u.output_tokens, u.calls));
     }
     s.push_str(&format!(
-        "- names: {} applied, {} rejected\n- remapped: {} classes, {} method refs, {} field refs\n- jar: {apply_msg}\n",
+        "- names: {} applied, {} rejected\n- remapped: {} classes, {} method refs, {} field refs, {} parameters/locals\n- jar: {apply_msg}\n",
         plan.applied,
         plan.rejected,
         plan.classes.len(),
         plan.methods.len(),
-        plan.fields.len()
+        plan.fields.len(),
+        plan.locals.len()
     ));
+    let (b, a) = cov;
+    s.push_str(&format!(
+        "\n## Readable names\n\n| | before | after |\n|---|---|---|\n| classes | {} | {} |\n| methods | {} | {} |\n| fields | {} | {} |\n| parameters/locals | {} | {} |\n",
+        pct(b.classes),
+        pct(a.classes),
+        pct(b.methods),
+        pct(a.methods),
+        pct(b.fields),
+        pct(a.fields),
+        pct(b.locals),
+        pct(a.locals)
+    ));
+    if semantic > 0 {
+        s.push_str(&format!(
+            "\nThe map carries {semantic} semantic annotation(s) (domains, flags). The bytecode applier keeps \
+             literals as they are; Sporeflower presents them: `sporeflower <jar> <out> --mappings {}`.\n",
+            map_target.display()
+        ));
+    }
+    if !map_errors.is_empty() {
+        s.push_str("\n## Map declarations that do not match the jar\n\n");
+        for e in map_errors {
+            s.push_str(&format!("- {e}\n"));
+        }
+    }
     if let Some(r) = rep {
         if !r.truncated.is_empty() {
             s.push_str(&format!("\nSource shown CUT (too large for one request): {}\n", r.truncated.join(", ")));
@@ -394,13 +667,15 @@ fn render_rename_report(
     for e in rows {
         let sym = match e.kind {
             names::Kind::Class => e.owner.clone(),
+            names::Kind::Local => format!("{}.{}{} {}", e.owner, e.name, e.desc, e.local),
             _ => format!("{}.{}{}", e.owner, e.name, if e.kind == names::Kind::Method { e.desc.as_str() } else { "" }),
         };
         s.push_str(&format!("| {:?} | `{sym}` | `{}` | {} | {} |\n", e.kind, e.new, e.origin, e.status.replace('|', "/")));
     }
     s.push_str(
-        "\nEdit the name map (change `new`, set `origin` to `manual`, or delete an entry) and \
-         re-run with `--names <map> --apply-only` to apply it again; every entry is re-validated.\n",
+        "\nThe name map is the source of truth: edit any name in it (a name that differs from its \
+         `was` is never overwritten), then apply it again with `arlecchino apply-names <jar> --names <map>` \
+         or `ai-rename --apply-only`; every entry is re-validated against the jar.\n",
     );
     s
 }

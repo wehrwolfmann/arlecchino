@@ -41,6 +41,8 @@ pub enum Kind {
     Class,
     Field,
     Method,
+    /// A parameter or local variable, keyed by its label (`v<slot>`, `v<slot>b` …).
+    Local,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -52,9 +54,12 @@ pub struct NameEntry {
     /// Current member name (empty for `class`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    /// JVM descriptor (empty for `class`).
+    /// JVM descriptor (empty for `class`; for `local`: the METHOD's descriptor).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub desc: String,
+    /// `local` only: the label of the variable (`v4`); `name` is then the method.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local: String,
     /// Proposed simple name.  Edit this by hand; delete the entry to drop it.
     pub new: String,
     /// `model` or `manual` (anything a person typed should say `manual`).
@@ -71,7 +76,8 @@ fn default_origin() -> String {
 
 impl NameEntry {
     pub fn key(&self) -> (Kind, String, String, String) {
-        (self.kind, self.owner.clone(), self.name.clone(), self.desc.clone())
+        let desc = if self.local.is_empty() { self.desc.clone() } else { format!("{}#{}", self.desc, self.local) };
+        (self.kind, self.owner.clone(), self.name.clone(), desc)
     }
 }
 
@@ -398,6 +404,8 @@ pub struct Plan {
     pub methods: BTreeMap<(String, String, String), String>,
     /// (class through which it is referenced, name) -> new name.
     pub fields: BTreeMap<(String, String), String>,
+    /// (declaring class, method, method desc, label) -> name of a parameter / local.
+    pub locals: BTreeMap<(String, String, String, String), String>,
     /// The input map with `status` filled in.
     pub map: NameMap,
     pub applied: usize,
@@ -406,7 +414,7 @@ pub struct Plan {
 
 impl Plan {
     pub fn is_empty(&self) -> bool {
-        self.classes.is_empty() && self.methods.is_empty() && self.fields.is_empty()
+        self.classes.is_empty() && self.methods.is_empty() && self.fields.is_empty() && self.locals.is_empty()
     }
 
     /// Tab-separated table for `NameApplier`:
@@ -421,6 +429,9 @@ impl Plan {
         }
         for ((o, nm), n) in &self.fields {
             s.push_str(&format!("field\t{o}\t{nm}\t{n}\n"));
+        }
+        for ((o, m, d, l), n) in &self.locals {
+            s.push_str(&format!("local\t{o}\t{m}\t{d}\t{l}\t{n}\n"));
         }
         s
     }
@@ -570,6 +581,7 @@ pub fn plan(world: &World, input: &NameMap) -> Plan {
     let mut applied = 0;
     let mut rejected = 0;
     let mut seen_keys: BTreeSet<(Kind, String, String, String)> = BTreeSet::new();
+    let mut local_new: BTreeMap<(String, String, String), BTreeMap<String, String>> = BTreeMap::new();
     for idx in order {
         let e = out_map.entries[idx].clone();
         let status = if !seen_keys.insert(e.key()) {
@@ -579,6 +591,7 @@ pub fn plan(world: &World, input: &NameMap) -> Plan {
                 Kind::Class => decide_class(world, &e, &mut class_new, &ext_simple),
                 Kind::Method => decide_method(world, &e, &mut g, &members, &locks, &mut group_new),
                 Kind::Field => decide_field(world, &e, &locks, &class_new, &mut field_new, &ext_simple, &packages_top),
+                Kind::Local => decide_local(world, &e, &class_new, &field_new, &ext_simple, &mut local_new),
             }
         };
         out_map.entries[idx].status = match status {
@@ -595,6 +608,11 @@ pub fn plan(world: &World, input: &NameMap) -> Plan {
 
     // 3) expand into the owner-qualified remapping table -------------------------
     let mut plan = Plan { map: out_map, applied, rejected, ..Default::default() };
+    for ((o, m, d), by_name) in local_new {
+        for (name, label) in by_name {
+            plan.locals.insert((o.clone(), m.clone(), d.clone(), label), name);
+        }
+    }
     for c in classes.keys() {
         let f = final_class_name(world, c, &class_new);
         if &f != c {
@@ -850,6 +868,78 @@ fn decide_field(
 }
 
 /// Class names (internal form) mentioned by a descriptor.
+/// Field names a local of class `c` could shadow in source: its own and inherited
+/// fields (in-jar under their final names, external as they are) and those of the
+/// classes it is nested in.
+fn visible_field_names(world: &World, c: &str, field_new: &BTreeMap<(String, String), String>) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut scope = vec![c.to_string()];
+    let mut cur = c.to_string();
+    while let Some((outer, _)) = cur.rsplit_once('$') {
+        if !world.in_jar(outer) {
+            break;
+        }
+        scope.push(outer.to_string());
+        cur = outer.to_string();
+    }
+    for s in scope {
+        let mut chain = vec![s.clone()];
+        chain.extend(world.ancestors(&s));
+        for x in chain {
+            if let Some(ci) = world.info(&x) {
+                for f in &ci.fields {
+                    out.insert(field_new.get(&(x.clone(), f.name.clone())).cloned().unwrap_or_else(|| f.name.clone()));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn decide_local(
+    world: &World,
+    e: &NameEntry,
+    class_new: &BTreeMap<String, String>,
+    field_new: &BTreeMap<(String, String), String>,
+    ext_simple: &BTreeSet<String>,
+    local_new: &mut BTreeMap<(String, String, String), BTreeMap<String, String>>,
+) -> Result<String, String> {
+    let Some(ci) = world.classes.get(&e.owner) else {
+        return Err(format!("class {} is not in the jar", e.owner));
+    };
+    let Some(mm) = ci.methods.iter().find(|m| m.name == e.name && m.desc == e.desc) else {
+        return Err(format!("method {}.{}{} is not in the jar", e.owner, e.name, e.desc));
+    };
+    if !super::mapfile::is_label(&e.local) || (e.local == "v0" && !mm.is_static()) {
+        return Err(format!("`{}` is not a local label", e.local));
+    }
+    if !is_valid_identifier(&e.new) || e.new == "this" || e.new.contains('$') {
+        return Err(format!("`{}` is not a valid Java variable name", e.new));
+    }
+    if super::mapfile::is_placeholder(&e.new) {
+        return Err("a placeholder, not a name".into());
+    }
+    // a local named like a field would silently change what an unqualified field
+    // access in the decompiled source means
+    if visible_field_names(world, &e.owner, field_new).contains(&e.new) {
+        return Err(format!("`{}` would shadow a field of {}", e.new, e.owner));
+    }
+    let class_simple: BTreeSet<String> = world.classes.keys().map(|c| simple_name(&final_class_name(world, c, class_new)).to_string()).collect();
+    if class_simple.contains(&e.new) || ext_simple.contains(&e.new) {
+        return Err(format!("`{}` is a class name", e.new));
+    }
+    let slot = local_new.entry((e.owner.clone(), e.name.clone(), e.desc.clone())).or_default();
+    let got = with_suffix(&e.new, |cand| match slot.get(cand) {
+        Some(l) if l != &e.local => Err(format!("`{cand}` already names {l} in this method")),
+        _ => Ok(()),
+    })?;
+    if slot.values().any(|l| l == &e.local) {
+        return Err("duplicate entry (the first one is used)".into());
+    }
+    slot.insert(got.clone(), e.local.clone());
+    Ok(applied_status(&e.new, &got))
+}
+
 pub fn desc_class_names(desc: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut it = desc.char_indices().peekable();
