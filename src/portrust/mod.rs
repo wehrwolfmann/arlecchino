@@ -15,7 +15,10 @@
 //!
 //! The crate has a `trace` binary that runs the game headless and writes a call
 //! trace in midp-rt's format; [`trace`] compares it with the trace of the original.
+//! With `--frames-dir` it also draws every frame (`jrt::raster`), and [`frames`]
+//! compares those pixel by pixel with midp-rt's capture.
 
+pub mod frames;
 pub mod gen;
 pub mod names;
 pub mod trace;

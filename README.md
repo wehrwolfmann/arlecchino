@@ -78,6 +78,7 @@ arlecchino port-rust [OUT] [--src DIR] [--crate-dir DIR] [--crate-name N]
                      [--map FILE.map]… [--api TABLE] [--classpath CP]
                      [--jrt DIR] [--strict] [--report]
 arlecchino trace-diff <ref-trace> <port-trace> [--drop-ids 3,4] [--drop-unreferenced]
+arlecchino frame-diff <ref-frames> <port-frames> [--offset N] [--diff-dir DIR] [--show N]
 ```
 
 `arlecchino <jar> …` is shorthand for `arlecchino decompile <jar> …` (back-compat).
@@ -410,8 +411,27 @@ not handle yet) becomes a typed `jrt::todo_ai!` marker, so the crate still build
 markers are listed in `residue.json` and counted in `report.txt` (`--report` prints
 it, `--strict` exits with status 1 if there is any). The crate has a `trace` binary
 that runs the game headless and writes a call trace in midp-rt's format, for a
-line-by-line comparison with the original jar under midp-rt (`arlecchino trace-diff`).
-Drawing goes to the trace only for now; `jrt::gfx::Backend` is where a renderer plugs in.
+line-by-line comparison with the original jar under midp-rt (`arlecchino trace-diff`):
+
+```sh
+trace <res-dir> <trace-out> 240 320 <frames> [--ticks] [--inputs ticks.json] [--frames-dir DIR]
+```
+
+`--inputs` (or `--ticks`) runs it the way midp-rt's `Headless --ticks N --inputs F`
+runs the jar: the same tick scenario, events delivered on their tick before its frame
+is painted, the run stopping after N ticks. `--frames-dir` draws every frame with the
+software renderer `jrt::raster` and writes `frame_NNNN.png`, frame i being the screen
+after tick i, as midp-rt's `--frames-dir` does; `arlecchino frame-diff` then compares
+the two directories pixel by pixel (identical frames and pixels in percent, a box per
+differing frame, `--diff-dir` for pictures with the differing pixels in red).
+
+The renderer follows midp-rt, not an idealised MIDP: `fillRect`, rectangles and
+straight lines, `drawImage`/`drawRegion` (all transforms, anchors including midp-rt's
+`drawRegion` arithmetic), clip, translation and Java2D alpha blending are exact; slanted
+lines and triangles are approximate; arcs, round rectangles and text are not drawn (the
+`trace` binary prints how many such calls it skipped). The screen starts black and a
+mutable image starts transparent, as under midp-rt. `Font` metrics are a table measured
+under midp-rt (AWT fonts, so they hold for the machine they were measured on).
 
 ## GUI
 
