@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Сборка midp-rt.jar (рантайм J2ME для Arlecchino).
-# Требуется JDK 17+. Компиляция с --release 17: мост кадров ShellFrameBridge
-# (org.microemu.app.shell) использует Unix-domain SocketChannel / UnixDomainSocketAddress
-# (Java 16+). Остальной рантайм Java-8-совместим; целевой JDK на машине — 17.
-# Maven upstream мёртв и не используется.
+# Builds midp-rt.jar (the J2ME runtime for Arlecchino).
+# Requires JDK 17+. Compiled with --release 17: the ShellFrameBridge frame bridge
+# (org.microemu.app.shell) uses a Unix-domain SocketChannel / UnixDomainSocketAddress
+# (Java 16+). The rest of the runtime is Java 8 compatible; the target JDK is 17.
+# The upstream Maven build is dead and not used.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -24,19 +24,19 @@ MODULES=(
     microemu-extensions/microemu-siemensapi
 )
 
-# Список исходников
+# List of sources
 : > build/sources.txt
 for m in "${MODULES[@]}"; do
     find "$m/src/main/java" -name '*.java' >> build/sources.txt
 done
-echo "Исходников: $(wc -l < build/sources.txt)"
+echo "Sources: $(wc -l < build/sources.txt)"
 
 "$JAVAC" --release 17 -encoding UTF-8 -nowarn \
     -cp "$ASM" \
     -d "$OUT" \
     @build/sources.txt
 
-# Ресурсы (device.xml, png устройств default/resizable и т.п.)
+# Resources (device.xml, device PNGs for default/resizable etc.)
 for m in "${MODULES[@]}"; do
     if [ -d "$m/src/main/resources" ]; then
         cp -r "$m/src/main/resources/." "$OUT/"
@@ -48,4 +48,4 @@ done
     -C "$OUT" .
 
 echo "OK: build/midp-rt.jar ($(du -h build/midp-rt.jar | cut -f1))"
-echo "Запуск: java -cp build/midp-rt.jar:$ASM org.microemu.app.Headless <game.jar>"
+echo "Run: java -cp build/midp-rt.jar:$ASM org.microemu.app.Headless <game.jar>"

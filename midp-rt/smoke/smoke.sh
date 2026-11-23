@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# Smoke-тест: headless-запуск MIDlet с ВКЛЮЧЁННОЙ ASM-инструментацией (ASM 9),
-# дамп кадра в PNG в двух независимых прогонах и сравнение sha256
-# (детерминизм рендера — важен для checkpoint-диффов Блока A Arlecchino).
+# Smoke test: headless MIDlet launch with ASM instrumentation ON (ASM 9),
+# a frame dump to PNG in two independent runs and a sha256 comparison
+# (rendering determinism matters for the checkpoint diffs of Arlecchino's Block A).
 #
-# Фаза 1: тестовый MIDlet, собранный javac --release 8 (class file major 52 —
-#         современный байткод, на котором падал ASM 3.1).
-# Фаза 2 (опциональная): оригинальный телефонный jar (старый байткод, major 45-49),
-#         путь берётся из $SMOKE_PHONE_JAR или дефолта; если файла нет — фаза
-#         пропускается с предупреждением.
+# Phase 1: a test MIDlet built with javac --release 8 (class file major 52 —
+#          modern bytecode, on which ASM 3.1 used to fail).
+# Phase 2 (optional): an original phone jar (old bytecode, major 45-49),
+#          the path comes from $SMOKE_PHONE_JAR or the default; if the file is missing
+#          the phase is skipped with a warning.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 RT=../build/midp-rt.jar
 ASM=../lib/asm-9.8.jar
-[ -f "$RT" ] || { echo "Сначала ../build.sh"; exit 1; }
+[ -f "$RT" ] || { echo "Run ../build.sh first"; exit 1; }
 
 PHONE_JAR="${SMOKE_PHONE_JAR:-$HOME/Загрузки/allods_rage_of_mages_mobportalnet_176x220_ru.jar}"
 
 rm -rf out && mkdir -p out/classes
 
-# 1. Тестовый MIDlet → test.jar (major 52)
+# 1. Test MIDlet → test.jar (major 52)
 javac --release 8 -nowarn -cp "$RT" -d out/classes TestMidlet.java
 jar --create --file out/test.jar --manifest mf.txt -C out/classes .
 
-# 2. Smoke-лаунчер
+# 2. Smoke launcher
 javac --release 8 -nowarn -cp "$RT" -d out SmokeLaunch.java
 
 run_pair() {
-    # run_pair <метка> <jar> [доп. аргументы Common...]
+    # run_pair <label> <jar> [extra Common arguments...]
     local label="$1" jar="$2"; shift 2
     for i in 1 2; do
         java -Djava.awt.headless=true -cp "$RT:$ASM:out" SmokeLaunch \
@@ -38,41 +38,41 @@ run_pair() {
     h1=$(sha256sum "out/${label}_frame1.png" | cut -d' ' -f1)
     h2=$(sha256sum "out/${label}_frame2.png" | cut -d' ' -f1)
     if [ "$h1" = "$h2" ]; then
-        echo "SMOKE OK [$label]: кадры двух прогонов бит-в-бит идентичны"
+        echo "SMOKE OK [$label]: the frames of two runs are bit-for-bit identical"
     else
-        echo "SMOKE FAIL [$label]: кадры различаются!"
+        echo "SMOKE FAIL [$label]: the frames differ!"
         exit 1
     fi
 }
 
-# 3. Фаза 1: современный байткод (major 52), инструментация ВКЛ
+# 3. Phase 1: modern bytecode (major 52), instrumentation ON
 run_pair modern "$(pwd)/out/test.jar"
 
-# 4. Фаза 2: оригинальный телефонный jar (старый байткод), инструментация ВКЛ
+# 4. Phase 2: an original phone jar (old bytecode), instrumentation ON
 if [ -f "$PHONE_JAR" ]; then
     run_pair phone "$PHONE_JAR"
 else
-    echo "SMOKE SKIP [phone]: телефонный jar не найден ($PHONE_JAR);"
-    echo "  укажите путь через SMOKE_PHONE_JAR=<game.jar>"
+    echo "SMOKE SKIP [phone]: phone jar not found ($PHONE_JAR);"
+    echo "  set the path with SMOKE_PHONE_JAR=<game.jar>"
 fi
 
-# 5. Фаза 3: headless-захват кадров (--frames-dir + index.json + --inputs):
-#    автостарт по манифесту, 12 кадров; NUM5 на t=600мс должен дать НОВОЕ
-#    состояние экрана (TestMidlet рисует последний keyCode цветной полосой)
+# 5. Phase 3: headless frame capture (--frames-dir + index.json + --inputs):
+#    autostart from the manifest, 12 frames; NUM5 at t=600 ms must give a NEW
+#    screen state (TestMidlet draws the last keyCode as a coloured bar)
 printf '[{"t_ms": 600, "key": "NUM5", "action": "tap"}]' > out/inputs.json
 java -Djava.awt.headless=true -cp "$RT:$ASM" org.microemu.app.Headless \
     --frames-dir out/cap --frames 12 --period-ms 100 --boot-wait-ms 1500 \
     --inputs out/inputs.json --rms out/cap_rms "$(pwd)/out/test.jar" >out/cap.log 2>&1
-[ -f out/cap/index.json ] || { echo "SMOKE FAIL [capture]: нет index.json"; cat out/cap.log; exit 1; }
+[ -f out/cap/index.json ] || { echo "SMOKE FAIL [capture]: no index.json"; cat out/cap.log; exit 1; }
 N_PNG=$(ls out/cap/frame_*.png | wc -l)
 N_STATES=$(grep -o '"sha256": "[0-9a-f]*"' out/cap/index.json | sort -u | wc -l)
 N_NONBLANK=$(grep -c '"blank": false' out/cap/index.json || true)
 if [ "$N_PNG" -eq 12 ] && [ "$N_STATES" -ge 2 ] && [ "$N_NONBLANK" -ge 1 ]; then
-    echo "SMOKE OK [capture]: 12 PNG, состояний $N_STATES (>=2: ввод дошёл), непустых $N_NONBLANK"
+    echo "SMOKE OK [capture]: 12 PNG, $N_STATES states (>=2: the input arrived), $N_NONBLANK non-blank"
 else
     echo "SMOKE FAIL [capture]: png=$N_PNG states=$N_STATES nonblank=$N_NONBLANK"
     cat out/cap.log
     exit 1
 fi
 
-echo "SMOKE OK: рендер детерминирован (инструментация ASM включена)"
+echo "SMOKE OK: rendering is deterministic (ASM instrumentation on)"
