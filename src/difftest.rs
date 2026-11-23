@@ -1,31 +1,32 @@
-//! Этап A5 (PLAN_runtime.md, блок A) — стенд поведенческого сравнения.
+//! Stage A5 (PLAN_runtime.md, block A) — the behavioural comparison harness.
 //!
-//! Порт `arlecchino/difftest.py`.
+//! Port of `arlecchino/difftest.py`.
 //!
-//! `arlecchino difftest <orig.jar> <rebuilt.jar>` гоняет ОБА jar безголово в
-//! FreeJ2ME-plus (этап A2, `diffrun`) с одним и тем же скриптом ввода (формат
-//! этапа A3) и сравнивает поведение.
+//! `arlecchino difftest <orig.jar> <rebuilt.jar>` runs BOTH jars headless in
+//! FreeJ2ME-plus (stage A2, `diffrun`) with the same input script (stage A3
+//! format) and compares their behaviour.
 //!
-//! Разведка A2 задала модель сравнения, вокруг которой построен модуль:
+//! The A2 investigation set the comparison model this module is built around:
 //!
-//!   * СОДЕРЖИМОЕ кадра детерминировано — каждое различимое состояние экрана даёт
-//!     один и тот же sha256 от прогона к прогону;
-//!   * ВРЕМЯ кадра — нет: переходы состояний плывут на ±1 кадр (живые часы).
-//!     Необязательный режим A7 `--fixed-clock` (`fixedclock`) виртуализирует
-//!     часы/ГСЧ MIDlet-а и срезает почти весь этот дрейф.
+//!   * frame CONTENT is deterministic — every distinguishable screen state gives
+//!     the same sha256 from run to run;
+//!   * frame TIMING is not: state transitions drift by ±1 frame (live clock).
+//!     The optional A7 mode `--fixed-clock` (`fixedclock`) virtualises the
+//!     MIDlet's clock/RNG and removes almost all of this drift.
 //!
-//! Поэтому мы никогда не сравниваем кадр i с кадром i: сравнивается **структура
-//! состояний экрана** — множество уникальных хэшей, порядок их первого появления
-//! и индексы первого появления (с допуском на сдвиг), плюс побочные эффекты RMS
-//! (этап A4) и признаки падений из stderr эмулятора.
+//! So we never compare frame i with frame i: what is compared is the **structure
+//! of screen states** — the set of unique hashes, the order of their first
+//! appearance and the first-appearance indices (with a shift tolerance), plus RMS
+//! side effects (stage A4) and crash signs from the emulator's stderr.
 //!
-//! Калибровка шума (`--calibrate`, и по умолчанию внутри difftest): ОДИН И ТОТ ЖЕ
-//! jar гоняется дважды и сравнивается сам с собой; эта база говорит, сколько
-//! расхождения — чистый недетерминизм эмулятора, и вердикт «оригинал против
-//! пересборки» падает только на сигналах СИЛЬНЕЕ этого шума.
+//! Noise calibration (`--calibrate`, and by default inside difftest): THE SAME
+//! jar is run twice and compared with itself; this baseline tells how much of the
+//! divergence is pure emulator non-determinism, and the "original vs rebuild"
+//! verdict fails only on signals STRONGER than this noise.
 //!
-//! Чистая логика сравнения (всё, чему не нужен эмулятор) живёт в верхней половине
-//! модуля и покрыта тестами без java; оркестрация прогонов — ниже.
+//! The pure comparison logic (everything that does not need the emulator) lives in
+//! the upper half of the module and is covered by tests without java; run
+//! orchestration is below.
 
 use crate::diffrun::{self, HeadlessResult, InputEvent, RunOpts};
 use crate::midprun;
@@ -34,27 +35,27 @@ use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-/// Умолчания. `shift_tol` — В КАДРАХ: разведка намерила ±1, ставим 3 с запасом;
-/// эффективный допуск дополнительно расширяется тем, что намерила калибровка.
+/// Defaults. `shift_tol` is IN FRAMES: the investigation measured ±1, we use 3 for margin;
+/// the effective tolerance is additionally widened by what the calibration measured.
 pub const DEFAULT_FRAMES: i64 = 30;
 pub const DEFAULT_SHIFT_TOL: i64 = 3;
 pub const DEFAULT_JACCARD_MARGIN: f64 = 0.15;
 
-/// Безголовые движки, которыми умеет править difftest (B4': midp-rt — наш
-/// LGPL-форк MicroEmulator в отдельном процессе — вторая независимая опора рядом
-/// с FreeJ2ME-plus).
+/// Headless engines difftest can drive (B4': midp-rt — our LGPL fork of
+/// MicroEmulator in a separate process — is the second independent reference next
+/// to FreeJ2ME-plus).
 pub const ENGINES: [&str; 2] = ["freej2me", "midp-rt"];
-/// Проблемы окружения (не установлен jar движка / java) — пробрасываем наверх,
-/// чтобы вызывающий сделал SKIP, а не записал поведенческий провал.
+/// Environment problems (engine jar / java not installed) are passed up so that
+/// the caller reports a SKIP rather than recording a behavioural failure.
 const ENV_ERROR_MARKERS: [&str; 3] =
     ["freej2me-lr.jar not found", "java executable", "midp-rt.jar not found"];
 
-/// Файлы внутри каталога RMS, которые НЕ являются хранилищами игры
-/// (FreeJ2ME-plus кладёт рядом свой конфиг на игру).
+/// Files inside the RMS directory that are NOT game record stores
+/// (FreeJ2ME-plus puts its own per-game config next to them).
 const RMS_ENGINE_FILES: [&str; 1] = ["game.conf"];
 
-// ───────────────────────── чистая логика сравнения ──────────────────────────
-/// Свернуть пер-кадровые хэши в (состояние, число_подряд_идущих_кадров).
+// ───────────────────────── pure comparison logic ────────────────────────────
+/// Collapse per-frame hashes into (state, number_of_consecutive_frames).
 pub fn collapse_states(hashes: &[String]) -> Vec<(String, i64)> {
     let mut out: Vec<(String, i64)> = Vec::new();
     for h in hashes {
@@ -66,9 +67,9 @@ pub fn collapse_states(hashes: &[String]) -> Vec<(String, i64)> {
     out
 }
 
-/// Различные состояния в порядке ПЕРВОГО появления (устойчиво к дрейфу ±1 кадр,
-/// в отличие от сырой RLE-последовательности, которая может потерять или добыть
-/// хвостовой цикл мигания).
+/// Distinct states in order of FIRST appearance (robust to ±1-frame drift,
+/// unlike the raw RLE sequence, which may lose or gain a trailing blink
+/// cycle).
 pub fn unique_in_order(hashes: &[String]) -> Vec<String> {
     let mut seen: BTreeSet<&String> = BTreeSet::new();
     let mut out = Vec::new();
@@ -80,7 +81,7 @@ pub fn unique_in_order(hashes: &[String]) -> Vec<String> {
     out
 }
 
-/// хэш состояния -> индекс кадра его первого появления
+/// state hash -> index of the frame where it first appeared
 pub fn first_seen(hashes: &[String]) -> BTreeMap<String, i64> {
     let mut out = BTreeMap::new();
     for (i, h) in hashes.iter().enumerate() {
@@ -89,19 +90,19 @@ pub fn first_seen(hashes: &[String]) -> BTreeMap<String, i64> {
     out
 }
 
-/// Структурное сравнение последовательностей состояний экрана двух прогонов.
+/// Structural comparison of the screen-state sequences of two runs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeqComparison {
-    /// |уникальные_a ∩ уникальные_b| / |уникальные_a ∪ уникальные_b|
+    /// |unique_a ∩ unique_b| / |unique_a ∪ unique_b|
     pub jaccard: f64,
-    /// состояния, виденные только в прогоне a
+    /// states seen only in run a
     pub only_a: Vec<String>,
     pub only_b: Vec<String>,
-    /// общие состояния впервые появляются в одном и том же порядке
+    /// shared states first appear in the same order
     pub order_ok: bool,
-    /// max |first_seen_a - first_seen_b| по общим состояниям
+    /// max |first_seen_a - first_seen_b| over shared states
     pub max_shift: i64,
-    /// совпадение по индексам (только для сведения — чувствительно ко времени)
+    /// match by index (informational only — timing-sensitive)
     pub frame_match_rate: f64,
 }
 
@@ -143,18 +144,18 @@ pub fn compare_sequences(hashes_a: &[String], hashes_b: &[String]) -> SeqCompari
     }
 }
 
-/// Всё, что вердикту надо знать про один безголовый прогон.
+/// Everything the verdict needs to know about one headless run.
 #[derive(Debug, Clone, Default)]
 pub struct RunSummary {
     pub label: String,
     pub out_dir: String,
     pub hashes: Vec<String>,
     pub nonblank: bool,
-    /// относительный путь -> sha256 (после прогона)
+    /// relative path -> sha256 (after the run)
     pub rms: BTreeMap<String, String>,
-    /// имена классов исключений, найденные в stderr
+    /// exception class names found in stderr
     pub exceptions: BTreeSet<String>,
-    /// сам прогон провалился
+    /// the run itself failed
     pub error: Option<String>,
 }
 
@@ -165,13 +166,13 @@ pub fn rms_paths(s: &RunSummary) -> BTreeSet<String> {
 #[derive(Debug, Clone)]
 pub struct Verdict {
     pub passed: bool,
-    /// почему ПРОВАЛ (пусто при успехе)
+    /// why it FAILED (empty on success)
     pub reasons: Vec<String>,
-    /// информационные наблюдения
+    /// informational observations
     pub notes: Vec<String>,
-    /// оригинал против оригинала (шум); None, если калибровка пропущена
+    /// original vs original (noise); None if calibration was skipped
     pub baseline: Option<SeqComparison>,
-    /// оригинал против пересборки
+    /// original vs rebuild
     pub cross: SeqComparison,
 }
 
@@ -190,10 +191,10 @@ fn pct0(x: f64) -> String {
     format!("{:.0}%", x * 100.0)
 }
 
-/// Вердикт A5: ПРОВАЛ только на сигналах сильнее откалиброванного шума.
+/// A5 verdict: FAIL only on signals stronger than the calibrated noise.
 ///
-/// `orig_b` — второй прогон оригинала (база шума); None — судить по фиксированным
-/// порогам без калибровки. Чистая функция над RunSummary.
+/// `orig_b` is the second run of the original (noise baseline); None means judging
+/// by fixed thresholds without calibration. A pure function over RunSummary.
 pub fn decide(
     orig_a: &RunSummary,
     orig_b: Option<&RunSummary>,
@@ -204,7 +205,7 @@ pub fn decide(
     let mut reasons: Vec<String> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
 
-    // 0) прогоны вообще должны были состояться
+    // 0) the runs must have happened at all
     if let Some(e) = &orig_a.error {
         return Verdict {
             passed: false,
@@ -230,7 +231,7 @@ pub fn decide(
     };
     let cross = compare_sequences(&orig_a.hashes, &rebuilt.hashes);
 
-    // 1) признаки падения, уникальные для пересобранного jar
+    // 1) crash signs unique to the rebuilt jar
     let mut orig_exc = orig_a.exceptions.clone();
     if let Some(b) = orig_b {
         orig_exc.extend(b.exceptions.iter().cloned());
@@ -246,12 +247,12 @@ pub fn decide(
         ));
     }
 
-    // 2) пустой экран
+    // 2) blank screen
     if orig_a.nonblank && !rebuilt.nonblank {
         reasons.push("rebuilt rendered ONLY blank frames (original did not)".into());
     }
 
-    // 3) структура состояний экрана, судимая относительно базы шума
+    // 3) screen-state structure, judged against the noise baseline
     let base_j = baseline.as_ref().map(|b| b.jaccard).unwrap_or(1.0);
     let min_jaccard = (base_j - jaccard_margin).max(0.0);
     if cross.jaccard < min_jaccard {
@@ -266,7 +267,7 @@ pub fn decide(
             ),
         });
     }
-    // порядок: требуем только то, что выдерживает сама база
+    // order: require only what the baseline itself sustains
     if !cross.order_ok {
         if baseline.as_ref().map(|b| b.order_ok).unwrap_or(true) {
             reasons.push("shared screen states appear in a DIFFERENT order".into());
@@ -278,7 +279,7 @@ pub fn decide(
             );
         }
     }
-    // сдвиг по времени: допуск расширен тем, что намерила база
+    // time shift: tolerance widened by what the baseline measured
     let eff_tol = shift_tol.max(baseline.as_ref().map(|b| b.max_shift).unwrap_or(0) + 1);
     if cross.max_shift > eff_tol {
         reasons.push(format!(
@@ -287,7 +288,7 @@ pub fn decide(
         ));
     }
 
-    // 4) побочные эффекты RMS
+    // 4) RMS side effects
     if rms_paths(orig_a) != rms_paths(rebuilt) {
         let pa = rms_paths(orig_a);
         let pr = rms_paths(rebuilt);
@@ -348,7 +349,7 @@ pub fn decide(
     }
 }
 
-/// Питоновский `[...] or '-'`: пустой список печатается как `-`, иначе как repr.
+/// Python's `[...] or '-'`: an empty list prints as `-`, otherwise as repr.
 fn fmt_list(v: &[String]) -> String {
     if v.is_empty() {
         "-".to_string()
@@ -357,15 +358,15 @@ fn fmt_list(v: &[String]) -> String {
     }
 }
 
-// ───────────────────── межмоторное сравнение (связка A↔B) ───────────────────
-// PLAN_runtime.md «Связка A↔B»: ОДИН И ТОТ ЖЕ jar в FreeJ2ME-plus против midp-rt
-// с одним скриптом ввода. Движки рисуют разными скинами/шрифтами, поэтому хэши
-// пикселей НИКОГДА не совпадут между движками — сравнение намеренно МЯГЧЕ
-// вердикта A5: сравнивается СТРУКТУРА смены состояний, поведение RMS (ИМЕНА
-// хранилищ) и признаки падений. Пиксельный Jaccard даётся только для сведения.
+// ───────────────────── cross-engine comparison (the A↔B link) ───────────────
+// PLAN_runtime.md "The A↔B link": THE SAME jar in FreeJ2ME-plus versus midp-rt
+// with one input script. The engines draw with different skins/fonts, so pixel
+// hashes will NEVER match between engines — the comparison is deliberately SOFTER
+// than the A5 verdict: it compares the STRUCTURE of state changes, RMS behaviour
+// (store NAMES) and crash signs. The pixel Jaccard is informational only.
 
-/// Индексы кадров, где экран МЕНЯЕТ состояние (хэш отличается от предыдущего) —
-/// «форма» прогона, не зависящая от движка.
+/// Frame indices where the screen CHANGES state (the hash differs from the previous one) —
+/// the engine-independent "shape" of a run.
 pub fn transition_frames(hashes: &[String]) -> Vec<i64> {
     (1..hashes.len())
         .filter(|i| hashes[*i] != hashes[*i - 1])
@@ -373,10 +374,10 @@ pub fn transition_frames(hashes: &[String]) -> Vec<i64> {
         .collect()
 }
 
-/// Имена хранилищ RMS, нормализованные для показа: базовое имя, срезаны `.rs`/`.rms`,
-/// служебные файлы движка (`game.conf`) исключены. ВНИМАНИЕ: имена НЕ сравнимы
-/// МЕЖДУ движками — FreeJ2ME-plus коверкает их на диске, — поэтому межмоторный
-/// вердикт сравнивает лишь АКТИВНОСТЬ RMS.
+/// RMS store names normalised for display: base name, `.rs`/`.rms` stripped,
+/// engine service files (`game.conf`) excluded. NOTE: names are NOT comparable
+/// BETWEEN engines — FreeJ2ME-plus mangles them on disk — so the cross-engine
+/// verdict only compares RMS ACTIVITY.
 pub fn rms_store_names(s: &RunSummary) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     for rel in s.rms.keys() {
@@ -399,19 +400,19 @@ pub fn rms_store_names(s: &RunSummary) -> BTreeSet<String> {
     names
 }
 
-/// Мягкое структурное сравнение одного jar на двух движках.
+/// Soft structural comparison of one jar on two engines.
 #[derive(Debug, Clone)]
 pub struct CrossEngineComparison {
     pub agree: bool,
-    /// признаки расхождения (пусто при согласии)
+    /// signs of divergence (empty when they agree)
     pub reasons: Vec<String>,
-    /// информационное (включая пиксельный Jaccard)
+    /// informational (including the pixel Jaccard)
     pub notes: Vec<String>,
-    /// уникальных состояний экрана на движок
+    /// unique screen states per engine
     pub states: (i64, i64),
-    /// индексы кадров смены состояния
+    /// frame indices of state changes
     pub transitions: (Vec<i64>, Vec<i64>),
-    /// ТОЛЬКО для сведения — между движками ожидается ~0
+    /// informational ONLY — ~0 is expected between engines
     pub pixel_jaccard: f64,
 }
 
@@ -431,11 +432,11 @@ fn fmt_ints(v: &[i64]) -> String {
     }
 }
 
-/// Чистая функция над двумя RunSummary.
+/// A pure function over two RunSummary values.
 ///
-/// Расхождение (reasons) при: провале прогона, «пусто против рисует», расхождении
-/// счётчиков уникальных состояний / переходов больше `state_tol`, исключениях
-/// только у одного движка, разных множествах имён хранилищ RMS.
+/// Divergence (reasons) on: a failed run, "blank vs drawing", unique-state /
+/// transition counts differing by more than `state_tol`, exceptions in only one
+/// engine, different sets of RMS store names.
 pub fn compare_cross_engine(
     run_a: &RunSummary,
     run_b: &RunSummary,
@@ -489,7 +490,7 @@ pub fn compare_cross_engine(
                 fmt_sorted(&only_b)
             ));
         }
-        // RMS: между движками одинаково значима только АКТИВНОСТЬ
+        // RMS: only ACTIVITY is equally meaningful across engines
         let sa = rms_store_names(run_a);
         let sb = rms_store_names(run_b);
         if sa.is_empty() != sb.is_empty() {
@@ -532,11 +533,11 @@ pub fn compare_cross_engine(
     }
 }
 
-// ───────────────────────── оркестрация прогонов ─────────────────────────────
-/// Имена классов исключений/ошибок Java, упомянутые в stderr эмулятора.
+// ───────────────────────── run orchestration ────────────────────────────────
+/// Java exception/error class names mentioned in the emulator's stderr.
 ///
-/// Сравниваем МНОЖЕСТВА, так что шум, который печатает и оригинал (например,
-/// MIDlet, штатно логирующий IOException), никогда не валит вердикт.
+/// We compare SETS, so noise that the original prints too (e.g. a MIDlet that
+/// routinely logs an IOException) never fails the verdict.
 pub fn scan_stderr(path: &Path) -> BTreeSet<String> {
     let text = match util::read_text_lossy(path) {
         Ok(t) => t,
@@ -551,9 +552,9 @@ pub fn scan_stderr(path: &Path) -> BTreeSet<String> {
         .collect()
 }
 
-/// Один безголовый прогон -> RunSummary. Провалившийся прогон записывает `error`
-/// вместо паники, чтобы вердикт мог о нём сообщить (отсутствие эмулятора всё же
-/// возвращается как Err — это проблема окружения, вызывающий делает skip).
+/// One headless run -> RunSummary. A failed run records `error` instead of
+/// panicking, so the verdict can report it (a missing emulator is still returned
+/// as Err — that is an environment problem, the caller skips).
 pub fn summarize_run(
     jar: &Path,
     out_dir: &Path,
@@ -573,7 +574,7 @@ pub fn summarize_run(
         ..Default::default()
     };
     let res: Result<HeadlessResult, String> = if engine == "midp-rt" {
-        // midp-rt тактирует себя сам — он уже детерминирован и такого флага не берёт
+        // midp-rt clocks itself — it is already deterministic and does not take such a flag
         let mut o = opts.clone();
         o.deterministic_capture = false;
         midprun::run_headless_midp_rt(jar, out_dir, inputs, &o, None, true)
@@ -583,7 +584,7 @@ pub fn summarize_run(
     match res {
         Err(e) => {
             if ENV_ERROR_MARKERS.iter().any(|m| e.contains(m)) {
-                return Err(e); // проблема окружения, не поведенческий сигнал
+                return Err(e); // environment problem, not a behavioural signal
             }
             summary.error = Some(e);
             return Ok(summary);
@@ -598,9 +599,9 @@ pub fn summarize_run(
     Ok(summary)
 }
 
-/// A7: при `enabled` вернуть A7-инструментированную копию `jar` под
-/// `out_root/_fixedclock`, иначе `jar` без изменений. При неудаче инструментации
-/// откатываемся на исходный jar (прогон всё равно возможен, просто недетерминированный).
+/// A7: when `enabled`, return an A7-instrumented copy of `jar` under
+/// `out_root/_fixedclock`, otherwise `jar` unchanged. If instrumentation fails we
+/// fall back to the original jar (a run is still possible, just non-deterministic).
 fn fixed_clock_jar(jar: &Path, out_root: &Path, enabled: bool) -> PathBuf {
     if !enabled {
         return jar.to_path_buf();
@@ -608,8 +609,8 @@ fn fixed_clock_jar(jar: &Path, out_root: &Path, enabled: bool) -> PathBuf {
     crate::fixedclock::maybe_transform(jar, &out_root.join("_fixedclock"), None, true)
 }
 
-/// `--calibrate`: прогнать ОДИН jar дважды с одним скриптом ввода и намерить
-/// базовое расхождение = чистый недетерминизм эмулятора (методика A2).
+/// `--calibrate`: run ONE jar twice with one input script and measure the
+/// baseline divergence = pure emulator non-determinism (the A2 method).
 pub fn calibrate(
     jar: &Path,
     out_root: &Path,
@@ -626,8 +627,8 @@ pub fn calibrate(
     Ok((cmp, a, b))
 }
 
-/// Полный стенд A5: (по желанию) калибровка на оригинале, прогон пересобранного
-/// jar, вердикт. Пишет `difftest_report.{md,json}` в out_root.
+/// The full A5 harness: (optional) calibration on the original, a run of the rebuilt
+/// jar, a verdict. Writes `difftest_report.{md,json}` into out_root.
 #[allow(clippy::too_many_arguments)]
 pub fn difftest(
     orig_jar: &Path,
@@ -666,8 +667,8 @@ pub fn difftest(
     Ok(verdict)
 }
 
-/// Прогнать ОДИН jar на обоих движках с одним скриптом ввода и сравнить мягко.
-/// Пишет `cross_engine_report.{md,json}` в out_root.
+/// Run ONE jar on both engines with one input script and compare softly.
+/// Writes `cross_engine_report.{md,json}` into out_root.
 pub fn cross_engine(
     jar: &Path,
     out_root: &Path,
@@ -686,7 +687,7 @@ pub fn cross_engine(
     Ok((cmp, a, b))
 }
 
-// ───────────────────────────── отчёты ────────────────────────────────────────
+// ───────────────────────────── reports ───────────────────────────────────────
 fn seq_json(c: Option<&SeqComparison>) -> serde_json::Value {
     match c {
         None => serde_json::Value::Null,
@@ -702,7 +703,7 @@ fn seq_json(c: Option<&SeqComparison>) -> serde_json::Value {
     }
 }
 
-/// Округление до 4 знаков, как `round(x, 4)` в Python.
+/// Round to 4 digits, like `round(x, 4)` in Python.
 fn round4(x: f64) -> f64 {
     (x * 10000.0).round() / 10000.0
 }
@@ -927,10 +928,10 @@ fn write_cross_reports(
     );
 }
 
-// ───────────────────── упаковка пересобранного jar ──────────────────────────
-/// Собрать ЗАПУСКАЕМЫЙ пересобранный jar: манифест и ресурсы из `src_jar`,
-/// `.class` — из `classes_dir` (round-trip `merged/_classes`, который полон:
-/// всё ещё сломанные классы засеяны там оригинальным байткодом).
+// ───────────────────── packaging the rebuilt jar ────────────────────────────
+/// Build a RUNNABLE rebuilt jar: manifest and resources from `src_jar`,
+/// `.class` files from `classes_dir` (the round-trip `merged/_classes`, which is complete:
+/// classes that are still broken are seeded there with the original bytecode).
 pub fn pack_rebuilt_jar(src_jar: &Path, classes_dir: &Path, out_jar: &Path) -> Result<PathBuf, String> {
     if let Some(p) = out_jar.parent() {
         std::fs::create_dir_all(p).map_err(|e| e.to_string())?;
@@ -945,7 +946,7 @@ pub fn pack_rebuilt_jar(src_jar: &Path, classes_dir: &Path, out_jar: &Path) -> R
         let mut e = zin.by_index(i).map_err(|e| e.to_string())?;
         let name = e.name().to_string();
         if name.ends_with('/') || name.ends_with(".class") {
-            continue; // только ресурсы и манифест; классы приходят пересобранными
+            continue; // resources and manifest only; classes come rebuilt
         }
         let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut e, &mut buf).map_err(|e| e.to_string())?;

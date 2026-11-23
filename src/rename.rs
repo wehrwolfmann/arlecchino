@@ -292,7 +292,7 @@ pub fn has_member_collisions(jar: &Path) -> bool {
 
 /// The classpath the renamer's reflection RESOLVER sees (4th argv to the helper).
 ///
-/// Always prepends the generated clean-room MIDP/CLDC stub (Stage Э8) when present, so
+/// Always prepends the generated clean-room MIDP/CLDC stub (Stage E8) when present, so
 /// `jdkResolvable` / `jdkDeclaresMethod` resolve `javax.microedition.*` contracts
 /// PRECISELY and lock genuine framework callbacks.  The caller's `framework_cp` (e.g.
 /// an auto FreeJ2ME jar that is also used for compilation) is appended too,

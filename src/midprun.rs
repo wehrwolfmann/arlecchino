@@ -1,33 +1,33 @@
-//! `arlecchino run <game.jar|jad>` (этапы B3'/B4' PLAN_runtime.md, сторона Apache):
-//! запуск MIDlet В ОКНЕ через **midp-rt** — наш LGPL-форк MicroEmulator
-//! (артефакт `build/midp-rt.jar`).
+//! `arlecchino run <game.jar|jad>` (stages B3'/B4' of PLAN_runtime.md, the Apache side):
+//! runs a MIDlet IN A WINDOW through **midp-rt** — our LGPL fork of MicroEmulator
+//! (artifact `build/midp-rt.jar`).
 //!
-//! Порт `arlecchino/midprun.py`.
+//! Port of `arlecchino/midprun.py`.
 //!
-//! Исходники форка живут в этом же дереве — subtree `midp-rt/` (LGPL 2.1). Готовый
-//! `midp-rt.jar` в git НЕ хранится (у форка свой `.gitignore` на `build/`), поэтому
-//! путь к нему ищется по порядку: `--midp-rt` → `$ARLECCHINO_MIDP_RT` → корень
-//! движков → рядом с бинарём → `build/` любого найденного чекаута форка.
+//! The fork's sources live in this same tree — the `midp-rt/` subtree (LGPL 2.1). The built
+//! `midp-rt.jar` is NOT kept in git (the fork has its own `.gitignore` for `build/`), so
+//! the path to it is looked up in order: `--midp-rt` → `$ARLECCHINO_MIDP_RT` → engines
+//! root → next to the binary → `build/` of any fork checkout found.
 //!
-//! ⚖️ Граница LGPL = граница ПРОЦЕССА (решение B0): этот модуль только СОБИРАЕТ
-//! командную строку java и порождает отдельный процесс — ни строчки LGPL-кода не
-//! импортируется, не копируется и не линкуется в Arlecchino.
+//! ⚖️ LGPL boundary = PROCESS boundary (decision B0): this module only BUILDS
+//! the java command line and spawns a separate process — not a single line of LGPL code
+//! is imported, copied or linked into Arlecchino.
 //!
-//! Два поведенческих урока, добытые кровью (живые Аллоды, 2026-06-10):
+//! Two behavioural lessons learned the hard way (live Allods, 2026-06-10):
 //!
-//! * **Автостарт.** Когда рантайму дают ПУТЬ К JAR, он лишь открывает набор в
-//!   списке лаунчера — пользователь должен нажать Start. Вызов по имени класса
-//!   (`--appclasspath game.jar <MIDletClass>`) создаёт и запускает MIDlet сразу,
-//!   поэтому мы сами разбираем `MIDlet-1` из манифеста (или .jad) и предпочитаем
-//!   этот режим; путь-к-jar остаётся запасным, когда `MIDlet-1` не нашёлся.
+//! * **Autostart.** When the runtime is given a PATH TO A JAR, it only opens the suite in
+//!   the launcher list — the user has to press Start. Invoking by class name
+//!   (`--appclasspath game.jar <MIDletClass>`) creates and starts the MIDlet right away,
+//!   so we parse `MIDlet-1` from the manifest (or .jad) ourselves and prefer
+//!   this mode; path-to-jar remains the fallback when `MIDlet-1` was not found.
 //!
-//! * **Инструментация ВКЛЮЧЕНА по умолчанию.** ASM форка переведён с 3.1 на 9.x,
-//!   так что инструментация классов MIDlet работает и на современном байткоде
-//!   (major 52+ — наши пересобранные jar), и на исходных телефонных jar. Важнее
-//!   другое: НЕинструментированный загрузчик MicroEmulator режет класс на 16 КБ,
-//!   а его `ClassNotFoundException` молча съедается в `MIDletClassLoader.loadClass`
-//!   → JVM показывает голый `NoClassDefFoundError` (Аллоды: класс `i` = 96 КБ).
-//!   `--no-instrument` (родной флаг форка) оставлен лишь как запасной выход.
+//! * **Instrumentation is ON by default.** The fork's ASM was moved from 3.1 to 9.x,
+//!   so instrumentation of MIDlet classes works both on modern bytecode
+//!   (major 52+ — our rebuilt jars) and on the original phone jars. More importantly:
+//!   the UNinstrumented MicroEmulator loader truncates a class at 16 KB,
+//!   and its `ClassNotFoundException` is silently swallowed in `MIDletClassLoader.loadClass`
+//!   → the JVM shows a bare `NoClassDefFoundError` (Allods: class `i` = 96 KB).
+//!   `--no-instrument` (the fork's own flag) is kept only as an escape hatch.
 
 use crate::config::engines_root_default;
 use crate::diffrun::{FrameRecord, HeadlessResult, RunOpts, which, InputEvent};
@@ -36,29 +36,29 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Каталог запущенного бинаря (для поиска «рядом с собой»).
+/// Directory of the running binary (for the "next to itself" lookup).
 fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
 }
 
-/// Имя подкаталога с исходниками форка (subtree `midp-rt/`, LGPL 2.1).
+/// Name of the subdirectory with the fork's sources (the `midp-rt/` subtree, LGPL 2.1).
 pub const REPO_DIRNAME: &str = "midp-rt";
-/// Имя собранного артефакта рантайма.
+/// Name of the built runtime artifact.
 pub const JAR_NAME: &str = "midp-rt.jar";
-/// Сколько уровней вверх от каталога бинаря просматривать (хватает на
-/// `target/release/arlecchino` → корень дерева).
+/// How many levels up from the binary's directory to look (enough for
+/// `target/release/arlecchino` → tree root).
 const EXE_ANCESTORS: usize = 4;
 
-/// Все места, где может лежать ЧЕКАУТ форка, в порядке приоритета:
+/// All places where a fork CHECKOUT may live, in priority order:
 ///
-/// 1. `$ARLECCHINO_MIDP_RT_SRC` — явное указание;
-/// 2. `<корень движков>/midp-rt` — куда его может положить `arlecchino setup`;
-/// 3. рядом с бинарём: `<каталог бинаря>/midp-rt` и тот же подкаталог у каждого
-///    предка (так собранный в `target/release/` бинарь находит subtree в дереве);
-/// 4. `~/Projects/arlecchino-midp-rt` — отдельный чекаут, запасной путь.
+/// 1. `$ARLECCHINO_MIDP_RT_SRC` — explicit setting;
+/// 2. `<engines root>/midp-rt` — where `arlecchino setup` may put it;
+/// 3. next to the binary: `<binary dir>/midp-rt` and the same subdirectory of each
+///    ancestor (this is how a binary built in `target/release/` finds the subtree in the tree);
+/// 4. `~/Projects/arlecchino-midp-rt` — a separate checkout, the fallback.
 ///
-/// ⚖️ Ни один из них не втягивается в сборку: это ИСХОДНИКИ отдельного
-/// артефакта, который собирает свой `build.sh` и запускает отдельный процесс.
+/// ⚖️ None of them is pulled into the build: these are the SOURCES of a separate
+/// artifact, built by its own `build.sh` and run as a separate process.
 pub fn midp_rt_repos(root: Option<&Path>) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     let mut push = |p: PathBuf| {
@@ -74,8 +74,8 @@ pub fn midp_rt_repos(root: Option<&Path>) -> Vec<PathBuf> {
     let engines = root.map(|r| r.to_path_buf()).unwrap_or_else(engines_root_default);
     push(engines.join(REPO_DIRNAME));
     if let Some(dir) = exe_dir() {
-        // сам каталог бинаря плюс несколько предков: `target/release/arlecchino`
-        // должен доставать до корня дерева, а дальше подниматься незачем.
+        // the binary's directory itself plus a few ancestors: `target/release/arlecchino`
+        // must reach the tree root, and there is no point going further up.
         let mut cur: Option<&Path> = Some(dir.as_path());
         for _ in 0..EXE_ANCESTORS {
             match cur {
@@ -91,13 +91,13 @@ pub fn midp_rt_repos(root: Option<&Path>) -> Vec<PathBuf> {
     out
 }
 
-/// Первый чекаут форка, в котором действительно есть `build.sh`.
+/// The first fork checkout that really has `build.sh`.
 pub fn midp_rt_repo(root: Option<&Path>) -> Option<PathBuf> {
     midp_rt_repos(root).into_iter().find(|r| r.join("build.sh").is_file())
 }
 
-/// Все места, где ищется ГОТОВЫЙ `midp-rt.jar` (тем же порядком, что и чекауты:
-/// переменная окружения → корень движков → рядом с бинарём → чекауты).
+/// All places where a BUILT `midp-rt.jar` is looked for (in the same order as checkouts:
+/// environment variable → engines root → next to the binary → checkouts).
 pub fn midp_rt_jar_candidates(root: Option<&Path>) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     let mut push = |p: PathBuf| {
@@ -121,13 +121,13 @@ pub fn midp_rt_jar_candidates(root: Option<&Path>) -> Vec<PathBuf> {
     out
 }
 
-/// Главный класс окна (отдельный процесс) рантайма.
+/// Main class of the runtime's window (separate process).
 pub const MAIN_WINDOW: &str = "org.microemu.app.Main";
-/// Главный класс безголового режима рантайма (там же захват кадров).
+/// Main class of the runtime's headless mode (frame capture lives there too).
 pub const MAIN_HEADLESS: &str = "org.microemu.app.Headless";
 
-/// Сообщение «как это починить» на случай отсутствующего midp-rt.jar.
-/// `checked` пуст → перечисляем стандартные места сами.
+/// The "how to fix it" message for a missing midp-rt.jar.
+/// `checked` empty → we list the standard places ourselves.
 pub fn missing_hint(checked: &[PathBuf], root: Option<&Path>) -> String {
     let mut lines = vec![
         "midp-rt.jar not found — the MIDP runtime (LGPL fork of MicroEmulator) \
@@ -166,7 +166,7 @@ pub fn missing_hint(checked: &[PathBuf], root: Option<&Path>) -> String {
     lines.join("\n")
 }
 
-/// Найти midp-rt.jar (порядок — в шапке модуля); None, когда его нет.
+/// Find midp-rt.jar (order — in the module header); None when it is missing.
 pub fn find_midp_rt(explicit: Option<&str>, root: Option<&Path>) -> Option<PathBuf> {
     if let Some(e) = explicit {
         let p = util::expanduser(e);
@@ -181,16 +181,16 @@ pub fn find_midp_rt(explicit: Option<&str>, root: Option<&Path>) -> Option<PathB
     midp_rt_jar_candidates(root).into_iter().find(|cand| cand.exists())
 }
 
-/// midp-rt.jar плюс ASM-jar(ы), нужные его инструментации MIDlet-ов
-/// (`lib/asm*.jar` в раскладке форка, либо рядом с самим jar).
+/// midp-rt.jar plus the ASM jar(s) its MIDlet instrumentation needs
+/// (`lib/asm*.jar` in the fork layout, or next to the jar itself).
 pub fn runtime_classpath(midp_rt: &Path) -> Vec<PathBuf> {
     let mut cp = vec![midp_rt.to_path_buf()];
     let dirs = [
-        // раскладка чекаута: build/midp-rt.jar рядом с ../lib/asm-*.jar
+        // checkout layout: build/midp-rt.jar next to ../lib/asm-*.jar
         midp_rt.parent().and_then(|p| p.parent()).map(|p| p.join("lib")),
-        // раскладка установки: midp-rt.jar рядом с lib/asm-*.jar
+        // install layout: midp-rt.jar next to lib/asm-*.jar
         midp_rt.parent().map(|p| p.join("lib")),
-        // всё вповалку в одном каталоге
+        // everything piled into one directory
         midp_rt.parent().map(|p| p.to_path_buf()),
     ];
     for d in dirs.into_iter().flatten() {
@@ -221,9 +221,9 @@ pub fn runtime_classpath(midp_rt: &Path) -> Vec<PathBuf> {
     cp
 }
 
-// ───────────────────── разбор MIDlet-1 (автостарт) ──────────────────────────
-/// Минимальный разборщик манифеста JAR / .jad: `Ключ: значение` с продолжениями
-/// в стиле RFC (строки манифеста, начинающиеся с одного пробела).
+// ───────────────────── parsing MIDlet-1 (autostart) ─────────────────────────
+/// A minimal JAR manifest / .jad parser: `Key: value` with RFC-style
+/// continuations (manifest lines starting with a single space).
 pub fn fold_manifest_lines(text: &str) -> BTreeMap<String, String> {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
     let mut key: Option<String> = None;
@@ -254,7 +254,7 @@ pub fn fold_manifest_lines(text: &str) -> BTreeMap<String, String> {
     attrs
 }
 
-/// `MIDlet-1 = 'Имя, /icon.png, the.Class'` → `the.Class` (или None).
+/// `MIDlet-1 = 'Name, /icon.png, the.Class'` → `the.Class` (or None).
 pub fn midlet1_class(attrs: &BTreeMap<String, String>) -> Option<String> {
     let entry = attrs.get("MIDlet-1")?;
     if entry.is_empty() {
@@ -267,11 +267,11 @@ pub fn midlet1_class(attrs: &BTreeMap<String, String>) -> Option<String> {
     Some(parts[2].trim().to_string())
 }
 
-/// Вызов «по имени класса» для .jar или .jad:
+/// The "by class name" invocation for a .jar or .jad:
 /// `(midlet_class, app_jar, properties_jad)`.
 ///
-/// `(None, None, None)` = «MIDlet-1 не найден, передаём путь рантайму как есть»
-/// (его список лаунчера, Start вручную). На кривых файлах не падает.
+/// `(None, None, None)` = "MIDlet-1 not found, pass the path to the runtime as is"
+/// (its launcher list, Start by hand). Does not crash on malformed files.
 pub fn autostart_target(game: &Path) -> (Option<String>, Option<PathBuf>, Option<PathBuf>) {
     let none = (None, None, None);
     let ext = game
@@ -308,7 +308,7 @@ pub fn autostart_target(game: &Path) -> (Option<String>, Option<PathBuf>, Option
     }
 }
 
-// ───────────────────────── командная строка / запуск ─────────────────────────
+// ───────────────────────── command line / launch ────────────────────────────
 #[derive(Debug, Clone, Default)]
 pub struct WindowOpts {
     pub width: Option<i64>,
@@ -322,11 +322,11 @@ fn pathsep_join(paths: &[PathBuf]) -> String {
     paths.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>().join(":")
 }
 
-/// Собрать (НЕ запускать) командную строку java для оконной сессии midp-rt.
+/// Build (do NOT run) the java command line for a midp-rt window session.
 ///
-/// `instrument = true` (умолчание) оставляет ASM-9 инструментацию MIDlet
-/// включённой — на практике это обязательно: сырой загрузчик режет классы на
-/// 16 КБ и превращает отказ в голый `NoClassDefFoundError`.
+/// `instrument = true` (the default) keeps the ASM-9 MIDlet instrumentation
+/// on — in practice this is mandatory: the raw loader truncates classes at
+/// 16 KB and turns the failure into a bare `NoClassDefFoundError`.
 pub fn build_run_argv(game: &Path, midp_rt: &Path, o: &WindowOpts) -> Vec<String> {
     let java = util::tool("ARLECCHINO_JAVA", "java");
     let mut argv = vec![java];
@@ -334,16 +334,16 @@ pub fn build_run_argv(game: &Path, midp_rt: &Path, o: &WindowOpts) -> Vec<String
         argv.push(format!("-Dmidprt.trace={}", t.display()));
     }
     if let Some(r) = &o.rms_dir {
-        // MicroEmulator держит конфиг и файловый RMS под <user.home>/.microemulator/
-        // (suite-<name>/<store>.rs). Переопределить user.home — единственный
-        // неинвазивный способ перенести это, заодно изолирует прогон от живого
-        // ~/.microemulator пользователя.
+        // MicroEmulator keeps its config and the file-based RMS under <user.home>/.microemulator/
+        // (suite-<name>/<store>.rs). Overriding user.home is the only
+        // non-invasive way to move that, and it also isolates the run from the user's live
+        // ~/.microemulator.
         argv.push(format!("-Duser.home={}", r.display()));
     }
     argv.push("-cp".into());
     argv.push(pathsep_join(&runtime_classpath(midp_rt)));
     argv.push(MAIN_WINDOW.into());
-    // файловый RMS, чтобы сохранения пережили процесс (FileRecordStoreManager)
+    // file-based RMS so that saves outlive the process (FileRecordStoreManager)
     argv.push("--rms".into());
     argv.push("file".into());
     if !o.instrument {
@@ -354,7 +354,7 @@ pub fn build_run_argv(game: &Path, midp_rt: &Path, o: &WindowOpts) -> Vec<String
         argv.push(w.to_string());
         argv.push(h.to_string());
     }
-    // Автостарт (режим имени класса), когда MIDlet-1 восстановим, иначе путь как есть.
+    // Autostart (class-name mode) when MIDlet-1 can be recovered, otherwise the path as is.
     let (cls, app_jar, props_jad) = autostart_target(game);
     match (cls, app_jar) {
         (Some(c), Some(j)) => {
@@ -385,12 +385,12 @@ pub struct HeadlessArgvOpts {
     pub home_dir: Option<PathBuf>,
 }
 
-/// Собрать (НЕ запускать) командную строку java для безголовой сессии захвата
-/// (режим форка `--frames-dir`: PNG-кадры + index.json).
+/// Build (do NOT run) the java command line for a headless capture session
+/// (the fork's `--frames-dir` mode: PNG frames + index.json).
 ///
-/// Переписывание на автостарт MIDlet-1 происходит ВНУТРИ рантайма (форк сам
-/// читает манифест/jad — безголовый список лаунчера никогда не перерисовывается,
-/// автостарт там обязателен); путь к игре передаём как есть.
+/// The rewrite to a MIDlet-1 autostart happens INSIDE the runtime (the fork itself
+/// reads the manifest/jad — the headless launcher list is never repainted, so
+/// autostart is mandatory there); we pass the game path as is.
 pub fn build_headless_argv(game: &Path, midp_rt: &Path, o: &HeadlessArgvOpts) -> Vec<String> {
     let java = util::tool("ARLECCHINO_JAVA", "java");
     let mut argv = vec![java, "-Djava.awt.headless=true".to_string()];
@@ -413,7 +413,7 @@ pub fn build_headless_argv(game: &Path, midp_rt: &Path, o: &HeadlessArgvOpts) ->
         argv.push(f.to_string_lossy().into_owned());
     }
     if let Some(r) = &o.rms_dir {
-        argv.push("--rms".into()); // значение-ПУТЬ = плоский файловый каталог RMS
+        argv.push("--rms".into()); // a PATH value = flat file-based RMS directory
         argv.push(r.to_string_lossy().into_owned());
     }
     if !o.instrument {
@@ -428,12 +428,12 @@ pub fn build_headless_argv(game: &Path, midp_rt: &Path, o: &HeadlessArgvOpts) ->
     argv
 }
 
-/// Безголовый прогон `jar` в midp-rt с захватом кадров — близнец
-/// `diffrun::run_headless`, та же форма результата, чтобы difftest мог
-/// обращаться с обоими движками одинаково.
+/// Headless run of `jar` in midp-rt with frame capture — the twin of
+/// `diffrun::run_headless`, with the same result shape so that difftest can
+/// treat both engines the same way.
 ///
-/// Граница LGPL = граница процесса: отдельный процесс java пишет
-/// frame_NNNN.png + index.json, мы лишь порождаем его и читаем файлы обратно.
+/// LGPL boundary = process boundary: a separate java process writes
+/// frame_NNNN.png + index.json, we only spawn it and read the files back.
 pub fn run_headless_midp_rt(
     jar: &Path,
     out_dir: &Path,
@@ -563,13 +563,13 @@ pub fn run_headless_midp_rt_sized(
     Ok(result)
 }
 
-/// Породить отдельный процесс java (граница LGPL) и дождаться его.
+/// Spawn a separate java process (the LGPL boundary) and wait for it.
 ///
-/// Мост кадров/ввода (allods-shell): когда задан `$ALLODS_SHELL_SOCKET`,
-/// `ShellFrameBridge` форка midp-rt гонит экран MIDP во внешний Rust-рендер по
-/// этому Unix-сокету и читает оттуда события клавиатуры. Мост сам читает
-/// переменную окружения (наследует наше окружение), мы лишь показываем её
-/// пользователю; `allods-renderer` надо запустить заранее.
+/// Frame/input bridge (allods-shell): when `$ALLODS_SHELL_SOCKET` is set,
+/// the midp-rt fork's `ShellFrameBridge` streams the MIDP screen to an external Rust renderer over
+/// that Unix socket and reads keyboard events from it. The bridge reads the
+/// environment variable itself (it inherits our environment), we only show it to
+/// the user; `allods-renderer` has to be started beforehand.
 pub fn run_midlet(game: &Path, midp_rt: &Path, o: &WindowOpts) -> i32 {
     let argv = build_run_argv(game, midp_rt, o);
     if argv.last().map(|s| s == &game.to_string_lossy()).unwrap_or(false) {
@@ -584,8 +584,8 @@ pub fn run_midlet(game: &Path, midp_rt: &Path, o: &WindowOpts) -> i32 {
     util::run_inherit(&argv)
 }
 
-/// Прогнать `./build.sh` форка (его собственный репозиторий — сюда ничего не
-/// вкладывается). None при успехе, человекочитаемая строка ошибки иначе.
+/// Run the fork's `./build.sh` (its own repository — nothing is
+/// vendored here). None on success, a human-readable error string otherwise.
 pub fn build_midp_rt(repo: Option<&Path>, root: Option<&Path>) -> Option<String> {
     let repo = match repo.map(|p| p.to_path_buf()).or_else(|| midp_rt_repo(root)) {
         Some(r) => r,
@@ -625,9 +625,9 @@ pub fn build_midp_rt(repo: Option<&Path>, root: Option<&Path>) -> Option<String>
     }
 }
 
-/// Шаг `arlecchino setup`: найти midp-rt.jar; если его нет, но чекаут форка
-/// присутствует — СОБРАТЬ через его ./build.sh (отдельный репозиторий/процесс).
-/// Мягко: отказ — это строка статуса с командой-починкой, а не паника.
+/// The `arlecchino setup` step: find midp-rt.jar; if it is missing but a fork checkout
+/// is present — BUILD it via its ./build.sh (a separate repository/process).
+/// Gentle: a failure is a status line with a fix-it command, not a panic.
 pub fn setup_midp_rt(root: Option<&Path>) -> String {
     let mut jar = find_midp_rt(None, root);
     let mut built = String::new();
@@ -644,8 +644,8 @@ pub fn setup_midp_rt(root: Option<&Path>) -> String {
         built = "built via build.sh; ".into();
     }
     let jar = jar.unwrap();
-    // Поставить рантайм в корень движков: `<root>/midp-rt.jar` + `<root>/lib/asm-*.jar`.
-    // После этого чекаут исходников больше не нужен ни для чего, кроме пересборки.
+    // Install the runtime into the engines root: `<root>/midp-rt.jar` + `<root>/lib/asm-*.jar`.
+    // After that the source checkout is no longer needed for anything except rebuilding.
     let mut installed = String::new();
     let root = root.map(|r| r.to_path_buf()).unwrap_or_else(engines_root_default);
     let target = root.join(JAR_NAME);

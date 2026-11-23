@@ -1,21 +1,21 @@
-//! Голден-сверка поведенческой верификации с Python-эталоном.
+//! Golden check of the behavioural verification against the Python reference.
 //!
-//! Эталон `tests/golden/behaviour_parity.json` снят с питоновской редакции
-//! (`arlecchino.difftest` / `diffrun` / `semdiff` / `midprun`) на тех же входах:
-//! те же последовательности хэшей, те же RunSummary, тот же текст `javap`
-//! (`tests/golden/javap_orig.txt` и `javap_recompiled.txt`), та же `mapping.txt`,
-//! те же манифесты и синтетический jar. Абсолютные пути временного каталога в
-//! эталоне заменены маркером `<TMP>` — здесь делается та же подстановка.
+//! The reference `tests/golden/behaviour_parity.json` was taken from the Python edition
+//! (`arlecchino.difftest` / `diffrun` / `semdiff` / `midprun`) on the same inputs:
+//! the same hash sequences, the same RunSummary values, the same `javap` text
+//! (`tests/golden/javap_orig.txt` and `javap_recompiled.txt`), the same `mapping.txt`,
+//! the same manifests and synthetic jar. Absolute temp-directory paths in the
+//! reference are replaced with the `<TMP>` marker — the same substitution is done here.
 //!
-//! Дерева `~/Projects/arlecchino-python` больше нет: оно снесено 02.09.2026,
-//! когда эта редакция прошла сверку. Голден самодостаточен — он в репозитории,
-//! и заново снимать его неоткуда и не нужно. Если эталон всё же понадобится
-//! пересобрать, полная история питоновской редакции лежит связкой в
+//! The `~/Projects/arlecchino-python` tree no longer exists: it was removed on 02.09.2026,
+//! once this edition passed the check. The golden file is self-contained — it is in the repository,
+//! and there is nowhere to re-take it from and no need to. Should the reference ever need to be
+//! rebuilt, the full history of the Python edition is kept as a bundle at
 //! `~/Projects/_архив/arlecchino-python-полная-история.bundle`.
 //!
-//! Что НЕ сверяется голденом (и почему): три сознательные починки багов
-//! оригинала — см. `normsig`/`canon_ref` в `semdiff` и `await_ready` в `diffrun`;
-//! на них заведены отдельные тесты ниже.
+//! What the golden file does NOT check (and why): three deliberate fixes of bugs in
+//! the original — see `normsig`/`canon_ref` in `semdiff` and `await_ready` in `diffrun`;
+//! they have separate tests below.
 
 use arlecchino::{difftest as dt, diffrun as dr, midprun as mr, semdiff as sd};
 use serde_json::{json, Value};
@@ -36,7 +36,7 @@ fn hs(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
 
-/// Те же 9 пар последовательностей, что и в генераторе эталона.
+/// The same 9 sequence pairs as in the reference generator.
 fn seq_cases() -> Vec<(Vec<String>, Vec<String>)> {
     let mut long_a = hs(&["s"]);
     long_a.extend(std::iter::repeat_n("m".to_string(), 9));
@@ -125,7 +125,7 @@ fn run_dict(r: &dt::RunSummary) -> Value {
     })
 }
 
-// ───────────────────── difftest: чистые последовательности ──────────────────
+// ───────────────────── difftest: pure sequences ─────────────────────────────
 #[test]
 fn sequence_model_matches_python() {
     let g = golden();
@@ -165,7 +165,7 @@ fn sequence_model_matches_python() {
     assert_eq!(g["seq_dict"], Value::Array(sd_));
 }
 
-// ───────────────────────────── difftest: вердикт ────────────────────────────
+// ───────────────────────────── difftest: verdict ────────────────────────────
 #[test]
 fn verdicts_match_python() {
     let g = golden();
@@ -321,7 +321,7 @@ fn verdicts_match_python() {
     }
 }
 
-// ───────────────────────── межмоторное сравнение ────────────────────────────
+// ───────────────────────── cross-engine comparison ──────────────────────────
 #[test]
 fn cross_engine_matches_python() {
     let g = golden();
@@ -402,7 +402,7 @@ fn cross_engine_matches_python() {
     );
 }
 
-// ────────────────────────── diffrun: протокол и RMS ─────────────────────────
+// ────────────────────────── diffrun: protocol and RMS ───────────────────────
 fn ev(key: Value, action: &str) -> dr::InputEvent {
     dr::InputEvent { t_ms: 0, key, action: action.into() }
 }
@@ -477,7 +477,7 @@ fn rms_snapshot_and_stderr_scan_match_python() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-// ──────────────────────────── midprun: argv и манифест ──────────────────────
+// ──────────────────────────── midprun: argv and manifest ────────────────────
 const MANIFESTS: [&str; 4] = [
     "Manifest-Version: 1.0\nMIDlet-1: Game, /i.png, com.x.\n Main\nMIDlet-Name: G\n",
     "MIDlet-1: Game, /i.png\n",
@@ -663,12 +663,12 @@ fn semdiff_matches_python() {
     assert_eq!(g["normsig_nomap"], Value::Array(ns2));
 }
 
-// ───────────── сознательные отступления от Python (починенные баги) ──────────
+// ───────────── deliberate departures from Python (fixed bugs) ───────────────
 #[test]
 fn normsig_does_not_chain_renames() {
-    // Баг Python: цикл по словарю применял замены поверх друг друга, поэтому
-    // `a_x -> a` и `a -> b` давали `a_x -> b`, а результат зависел от порядка
-    // строк в mapping.txt. Здесь каждое имя заменяется ровно один раз.
+    // Python bug: the loop over the dictionary applied replacements on top of each other, so
+    // `a_x -> a` and `a -> b` gave `a_x -> b`, and the result depended on the order of
+    // lines in mapping.txt. Here every name is replaced exactly once.
     let mut rev = BTreeMap::new();
     rev.insert("a_x".to_string(), "a".to_string());
     rev.insert("a".to_string(), "b".to_string());
@@ -678,8 +678,8 @@ fn normsig_does_not_chain_renames() {
 
 #[test]
 fn canon_ref_without_descriptor_is_not_mangled() {
-    // Баг Python: без ':' в операнде `rfind` давал −1, у имени отгрызался
-    // последний символ, а дескриптором становилась вся строка.
+    // Python bug: with no ':' in the operand, `rfind` gave −1, the name lost its
+    // last character, and the whole string became the descriptor.
     let empty = BTreeMap::new();
     assert_eq!(
         sd::canon_ref(" Method owner.name", &empty),

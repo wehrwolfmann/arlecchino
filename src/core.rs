@@ -153,7 +153,7 @@ pub fn compile_dir(srcdir: &Path, classpath: Option<&str>) -> (i64, BTreeMap<Str
         cmd.push(cp.to_string());
     }
     cmd.push(format!("@{}", listf.to_string_lossy()));
-    // javac в srcdir: свой @argfile он положит туда же, а не в чужой каталог.
+    // javac in srcdir: it puts its own @argfile there too, not into someone else's directory.
     let r = util::run_capture_in(&cmd, None, Some(srcdir));
     let log = r.stderr;
     let per = count_errors_per(&log, srcdir);

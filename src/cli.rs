@@ -532,15 +532,15 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         }
     }
 
-    // ── семантический round-trip (по желанию, по умолчанию выключен) ────────
+    // ── semantic round-trip (optional, off by default) ──────────────────────
     let mut semdiff_report: Option<crate::semdiff::SemdiffReport> = None;
     if let (true, Some(md), false) =
         (a.semdiff || a.reject_semantic_drift, merged_dir.as_ref(), a.no_roundtrip)
     {
         println!("\n== SEMANTIC ROUND-TRIP (semdiff) ==");
         let classes_dir = md.join("_classes");
-        // пропускаем классы, которые не пересобрались (их .class — засеянный
-        // ОРИГИНАЛ, самосравнение было бы пустым и обманчивым)
+        // skip classes that did not recompile (their .class is the seeded
+        // ORIGINAL, so a self-comparison would be empty and misleading)
         let skip: BTreeSet<String> = rt
             .as_ref()
             .map(|r| {
@@ -925,8 +925,8 @@ fn cmd_setup(a: &SetupArgs) -> i32 {
     for (k, v) in &res {
         println!("  {k:12} {v}");
     }
-    // `--only` называет ровно те движки, что нужны: FreeJ2ME он тоже фильтрует,
-    // иначе `setup --only midp-rt` без спроса лезет в сеть за эмулятором.
+    // `--only` names exactly the engines that are needed: it filters FreeJ2ME too,
+    // otherwise `setup --only midp-rt` would go to the network for the emulator unasked.
     let want_freej2me = only
         .as_deref()
         .map(|o| o.iter().any(|x| x == "freej2me"))
@@ -1164,11 +1164,11 @@ fn cmd_run(a: &RunArgs) -> i32 {
 }
 
 // ───────────────────────────── difftest ─────────────────────────────────────
-/// Этап A5 — стенд поведенческого сравнения (PLAN_runtime.md, блок A).
+/// Stage A5 — the behavioural comparison harness (PLAN_runtime.md, block A).
 ///
-/// Обычный режим: откалибровать шум на ОРИГИНАЛЕ (прогнать его дважды), прогнать
-/// пересобранный jar, сравнить последовательности состояний экрана + RMS, вердикт.
-/// `--calibrate`: только оригинал, дважды — печатает базу шума вместо вердикта.
+/// Normal mode: calibrate the noise on the ORIGINAL (run it twice), run the
+/// rebuilt jar, compare the sequences of screen states + RMS, give a verdict.
+/// `--calibrate`: only the original, twice — prints the noise baseline instead of a verdict.
 fn cmd_difftest(a: &DifftestArgs) -> i32 {
     use crate::difftest as dt;
     let orig = util::absolutize(Path::new(&a.orig));

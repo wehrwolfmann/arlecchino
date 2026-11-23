@@ -365,10 +365,10 @@ pub fn setup_engines(root: &Path, only: Option<&[String]>) -> Vec<(String, Strin
     if only.is_none() || in_only("midp-stub") {
         result.push(("midp-stub".to_string(), crate::midp_stub::build_stub(None, None)));
     }
-    // Рантайм MIDP (LGPL-форк MicroEmulator) — ОТДЕЛЬНЫЙ репозиторий/артефакт,
-    // сюда он никогда не качается и не вкладывается. Этот шаг только НАХОДИТ
-    // midp-rt.jar (настраиваемо: $ARLECCHINO_MIDP_RT / корень движков / чекаут
-    // форка) и сообщает, лежат ли рядом его jar-ы ASM.
+    // The MIDP runtime (LGPL fork of MicroEmulator) is a SEPARATE repository/artifact,
+    // it is never downloaded or vendored here. This step only FINDS
+    // midp-rt.jar (configurable: $ARLECCHINO_MIDP_RT / engines root / fork
+    // checkout) and reports whether its ASM jars are next to it.
     if only.is_none() || in_only("midp-rt") {
         result.push(("midp-rt".to_string(), crate::midprun::setup_midp_rt(Some(root))));
     }
@@ -400,9 +400,9 @@ pub fn setup_asm(root: &Path) -> String {
         let trimmed: String = joined.chars().take(300).collect();
         return format!("FAILED (no ASM jars; offline?). {trimmed}");
     }
-    // компилируем ОБА ASM-помощника против тех jar-ов ASM, что есть: переименователь
-    // членов (конвейер decompile) и A7-трансформер детерминированных часов
-    // (difftest --fixed-clock по запросу). Механика и каталог _classes/ общие.
+    // compile BOTH ASM helpers against whatever ASM jars are present: the member
+    // renamer (the decompile pipeline) and the A7 deterministic-clock transformer
+    // (difftest --fixed-clock on request). The mechanics and the _classes/ directory are shared.
     let comp = rename::compile_helper(Some(root));
     let comp_a7 = crate::fixedclock::compile_helper(Some(root));
     let tail = if failed.is_empty() {

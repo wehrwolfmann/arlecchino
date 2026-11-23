@@ -13,7 +13,7 @@
 //!   - [`Executor`] — trait "do it": remove file / remove dir. Real + mock;
 //!   - [`execute`]  — runs a plan through an executor.
 //!
-//! The UI must confirm ("Точно удалить?") before calling [`execute`] with the real
+//! The UI must confirm ("Really delete?") before calling [`execute`] with the real
 //! executor.  The module itself does nothing until then.
 
 use crate::launcher;

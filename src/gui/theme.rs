@@ -1,4 +1,4 @@
-//! egui theme "Тёмный (Steam)" / steam_dark — palette taken verbatim from Rexon's
+//! egui theme "Dark (Steam)" / steam_dark — palette taken verbatim from Rexon's
 //! `ui_base.py` `_SKINS["steam_dark"]["palette"]` and mapped onto egui `Visuals`
 //! (QPalette roles noted per constant).
 
@@ -33,7 +33,7 @@ pub const RED: Color32 = Color32::from_rgb(0xff, 0x52, 0x52);
 
 const RADIUS: u8 = 6;
 
-/// Build the "Тёмный (Steam)" `egui::Visuals`.
+/// Build the "Dark (Steam)" `egui::Visuals`.
 pub fn steam_dark_visuals() -> egui::Visuals {
     let mut v = egui::Visuals::dark();
 

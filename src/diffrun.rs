@@ -1,31 +1,31 @@
-//! Безголовые прогоны MIDlet с захватом кадров (PLAN_runtime.md, блок A, этап A2).
+//! Headless MIDlet runs with frame capture (PLAN_runtime.md, block A, stage A2).
 //!
-//! Порт `arlecchino/diffrun.py`. Гоняем libretro-фронтенд FreeJ2ME-plus
-//! (`freej2me-lr.jar`, ставится `arlecchino setup`). Несмотря на название, ни
-//! нативного ядра libretro, ни SDL, ни X-сервера здесь нет: Main-Class того jar
-//! (`org.recompile.freej2me.Libretro`) говорит по обычному каналу stdin/stdout,
-//! и мы говорим на нём напрямую. Эмулятор рисует во внутренний буфер и по запросу
-//! пишет в stdout сырые кадры RGB24 — настоящий безголовый захват.
+//! Port of `arlecchino/diffrun.py`. We drive the libretro frontend of FreeJ2ME-plus
+//! (`freej2me-lr.jar`, installed by `arlecchino setup`). Despite the name, there is
+//! no native libretro core, no SDL and no X server here: the Main-Class of that jar
+//! (`org.recompile.freej2me.Libretro`) talks over a plain stdin/stdout channel,
+//! and we speak it directly. The emulator draws into an internal buffer and, on
+//! request, writes raw RGB24 frames to stdout — a true headless capture.
 //!
-//! Протокол канала (заметки clean-room по поведению freej2me-plus 1.52):
+//! Channel protocol (clean-room notes on the behaviour of freej2me-plus 1.52):
 //!
-//!   argv потомка: 26 позиционных настроек (ширина высота поворот телефон fps звук ...).
-//!   stdin:  5-байтовые команды [op, b1, b2, b3, b4], code = b1<<24|b2<<16|b3<<8|b4
-//!           op 11 = каталог RMS/сохранений (code = длина пути, следом байты пути)
-//!           op 10 = загрузить и запустить jar (та же длина-префикс кодировка)
-//!           op 15 = запрос кадра [15, mult_hi, mult_lo, processed_flag, ff_flag];
-//!                   processed_flag=0 значит «дай свежий кадр прямо сейчас»
-//!           op  3/2 = джойпад вниз/вверх (code = индекс клавиши) — этап A3
-//!   stdout: b"+READY\n" один раз после старта, дальше на каждый запрос 16-байтовый
-//!           заголовок (магия 0xFE, w:2, h:2, поворот:1, вибрация:8, рестарт:1,
-//!           кодировка:1) и следом w*h*3 байт RGB24 (big-endian).
+//!   child argv: 26 positional settings (width height rotate phone fps sound ...).
+//!   stdin:  5-byte commands [op, b1, b2, b3, b4], code = b1<<24|b2<<16|b3<<8|b4
+//!           op 11 = RMS/save directory (code = path length, path bytes follow)
+//!           op 10 = load and start a jar (same length-prefix encoding)
+//!           op 15 = frame request [15, mult_hi, mult_lo, processed_flag, ff_flag];
+//!                   processed_flag=0 means "give me a fresh frame right now"
+//!           op  3/2 = joypad down/up (code = key index) — stage A3
+//!   stdout: b"+READY\n" once after start, then for each request a 16-byte
+//!           header (magic 0xFE, w:2, h:2, rotation:1, vibration:8, restart:1,
+//!           encoding:1) followed by w*h*3 bytes of RGB24 (big-endian).
 //!
-//! Сам MIDlet работает свободно (живые потоки, живые часы) — кадры снимаются
-//! тогда, когда мы их просим. Это задокументированный в плане недетерминированный
-//! режим MVP; детерминизм — этап A7 (`fixedclock`).
+//! The MIDlet itself runs freely (live threads, live clock) — frames are taken
+//! when we ask for them. This is the non-deterministic MVP mode documented in the
+//! plan; determinism is stage A7 (`fixedclock`).
 //!
-//! Результат прогона: `frame_NNNN.png` плюс `frames.json` (индекс кадра -> файл,
-//! sha256, ширина, высота).
+//! Result of a run: `frame_NNNN.png` plus `frames.json` (frame index -> file,
+//! sha256, width, height).
 
 use crate::emulate::find_freej2me_lr;
 use crate::util;
@@ -37,17 +37,17 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 pub const FRAME_MAGIC: u8 = 0xFE;
-/// Размер экрана по умолчанию: 240x320 у большей части регрессионного набора.
+/// Default screen size: 240x320 for most of the regression set.
 pub const DEFAULT_W: i64 = 240;
 pub const DEFAULT_H: i64 = 320;
 const READY_TIMEOUT_S: f64 = 30.0;
-/// терпим посторонний вывод MIDlet в stdout до 1 МиБ
+/// tolerate up to 1 MiB of stray MIDlet output on stdout
 const MAX_SKIP_BEFORE_MAGIC: u64 = 1 << 20;
 
-/// `MobilePlatform.load()` сверяет `file.encoding` JVM с кодировкой, которая нужна
-/// MIDlet-у (по умолчанию `ISO_8859_1`), и на расхождении просит перезапуск — на
-/// Linux с UTF-8 локалью это срабатывает на КАЖДОМ jar, если не стартовать java с
-/// `-Dfile.encoding=<нужная>`. Коды идут байтом в заголовке кадра.
+/// `MobilePlatform.load()` checks the JVM `file.encoding` against the encoding the
+/// MIDlet needs (`ISO_8859_1` by default) and asks for a restart on a mismatch — on
+/// Linux with a UTF-8 locale this fires on EVERY jar unless java is started with
+/// `-Dfile.encoding=<the needed one>`. The codes come as a byte in the frame header.
 fn encoding_name(code: u8) -> &'static str {
     match code {
         1 => "Shift_JIS",
@@ -82,7 +82,7 @@ impl HeadlessResult {
     }
 }
 
-/// Параметры безголового прогона (общие для обоих движков).
+/// Headless run parameters (shared by both engines).
 #[derive(Debug, Clone)]
 pub struct RunOpts {
     pub max_frames: i64,
@@ -91,7 +91,7 @@ pub struct RunOpts {
     pub width: i64,
     pub height: i64,
     pub rms_dir: Option<PathBuf>,
-    /// A7: гнать цикл захвата по СЧЁТУ кадров, без сна по стенным часам.
+    /// A7: drive the capture loop by frame COUNT, without sleeping on the wall clock.
     pub deterministic_capture: bool,
 }
 
@@ -109,7 +109,7 @@ impl Default for RunOpts {
     }
 }
 
-/// Одно событие ввода: {"t_ms": 2000, "key": "NUM5", "action": "press"|"release"|"tap"}.
+/// One input event: {"t_ms": 2000, "key": "NUM5", "action": "press"|"release"|"tap"}.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InputEvent {
     #[serde(default)]
@@ -123,10 +123,10 @@ fn default_action() -> String {
     "press".into()
 }
 
-/// Индексы джойпада libretro, которые фронтенд переводит в коды MIDP через
-/// `Mobile.getMobileKey` (ветка обычного телефона, freej2me-plus 1.52):
-/// 0..3 = крестовина, 7 = средняя софт-клавиша, 8/9 = правая/левая софт,
-/// 18 = NUM5 (классический «огонь» на клавиатуре).
+/// libretro joypad indices that the frontend maps to MIDP codes via
+/// `Mobile.getMobileKey` (the plain phone branch, freej2me-plus 1.52):
+/// 0..3 = D-pad, 7 = middle soft key, 8/9 = right/left soft key,
+/// 18 = NUM5 (the classic keypad "fire").
 pub fn libretro_key(name: &str) -> Option<i64> {
     Some(match name {
         "UP" => 0,
@@ -153,12 +153,12 @@ pub fn libretro_key(name: &str) -> Option<i64> {
     })
 }
 
-/// 26 позиционных настроек, которые ждёт libretro-фронтенд (раскладка 1.52):
+/// The 26 positional settings the libretro frontend expects (1.52 layout):
 /// width height rotate phone fps sound custom_midi dump_audio loglevel
 /// noalpha_hack backlight_mask fantasyzone_fix translate_origin custom_font
 /// font_offset dump_gfx delete_kjx m3g_untextured m3g_wireframe fps_hack
 /// immediate_repaints override_platform siemens_drawing halfres_m3g doja
-/// ignore_volume. Всё выключено/нейтрально; звук ВЫКЛ (безголовый режим), fps 60.
+/// ignore_volume. Everything off/neutral; sound OFF (headless mode), fps 60.
 pub fn child_args(width: i64, height: i64) -> Vec<String> {
     let mut v = vec![width.to_string(), height.to_string()];
     for s in [
@@ -183,7 +183,7 @@ fn read_exact(stream: &mut impl Read, n: usize) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-/// 5-байтовая команда канала: `[op, b1, b2, b3, b4]`, code = b1<<24|b2<<16|b3<<8|b4.
+/// A 5-byte channel command: `[op, b1, b2, b3, b4]`, code = b1<<24|b2<<16|b3<<8|b4.
 pub fn encode_cmd(op: u8, code: i64) -> [u8; 5] {
     let c = code as u32;
     [
@@ -195,7 +195,7 @@ pub fn encode_cmd(op: u8, code: i64) -> [u8; 5] {
     ]
 }
 
-/// Команда с путём: длина-префикс, следом сами байты пути.
+/// A command with a path: length prefix, followed by the path bytes themselves.
 pub fn encode_path_cmd(op: u8, path: &str) -> Vec<u8> {
     let raw = path.as_bytes();
     let mut v = encode_cmd(op, raw.len() as i64).to_vec();
@@ -203,7 +203,7 @@ pub fn encode_path_cmd(op: u8, path: &str) -> Vec<u8> {
     v
 }
 
-/// Байты, которые уходят в эмулятор на одно событие ввода (A3).
+/// The bytes sent to the emulator for one input event (A3).
 pub fn encode_input(ev: &InputEvent) -> Result<Vec<u8>, String> {
     let code = match &ev.key {
         serde_json::Value::Number(n) => n.as_i64(),
@@ -216,10 +216,10 @@ pub fn encode_input(ev: &InputEvent) -> Result<Vec<u8>, String> {
     };
     let mut v = Vec::new();
     if ev.action == "press" || ev.action == "tap" {
-        v.extend_from_slice(&encode_cmd(3, code)); // джойпад: клавиша нажата
+        v.extend_from_slice(&encode_cmd(3, code)); // joypad: key pressed
     }
     if ev.action == "release" || ev.action == "tap" {
-        v.extend_from_slice(&encode_cmd(2, code)); // джойпад: клавиша отпущена
+        v.extend_from_slice(&encode_cmd(2, code)); // joypad: key released
     }
     Ok(v)
 }
@@ -245,7 +245,7 @@ pub fn sha256_hex(data: &[u8]) -> String {
     s
 }
 
-/// PNG-кадр `frame_NNNN.png` (в Python — через Pillow).
+/// PNG frame `frame_NNNN.png` (in Python — via Pillow).
 fn save_frame(out_dir: &Path, index: i64, w: i64, h: i64, rgb: &[u8]) -> String {
     let name = format!("frame_{index:04}.png");
     let file = std::fs::File::create(out_dir.join(&name));
@@ -263,14 +263,14 @@ fn save_frame(out_dir: &Path, index: i64, w: i64, h: i64, rgb: &[u8]) -> String 
 
 enum FrameOut {
     Frame(i64, i64, Vec<u8>),
-    /// эмулятор просит перезапуск с другой `file.encoding`
+    /// the emulator asks for a restart with a different `file.encoding`
     Restart(&'static str),
 }
 
 fn read_frame(stdout: &mut impl Read, lcd_w: i64, lcd_h: i64) -> Result<FrameOut, String> {
     let mut skipped: u64 = 0;
     loop {
-        // ищем магию 0xFE — пропускаем посторонний вывод MIDlet
+        // look for the 0xFE magic — skip stray MIDlet output
         if read_exact(stdout, 1)?[0] == FRAME_MAGIC {
             break;
         }
@@ -279,12 +279,12 @@ fn read_frame(stdout: &mut impl Read, lcd_w: i64, lcd_h: i64) -> Result<FrameOut
             return Err("no 0xFE frame marker within 1MiB of stdout".into());
         }
     }
-    // 15 байт после магии: w:2 h:2 rotation:1 vib_dur:4 vib_str:4 restart:1 encoding:1
+    // 15 bytes after the magic: w:2 h:2 rotation:1 vib_dur:4 vib_str:4 restart:1 encoding:1
     let hdr = read_exact(stdout, 15)?;
     let w = ((hdr[0] as i64) << 8) | hdr[1] as i64;
     let h = ((hdr[2] as i64) << 8) | hdr[3] as i64;
     if hdr[13] != 0 {
-        // просят перезапуск — дочитываем полезную нагрузку и всплываем наверх
+        // a restart is requested — read the rest of the payload and bubble up
         read_exact(stdout, (lcd_w * lcd_h * 3) as usize)?;
         return Ok(FrameOut::Restart(encoding_name(hdr[14])));
     }
@@ -301,10 +301,10 @@ fn inject_input(stdin: &mut impl Write, ev: &InputEvent) -> Result<(), String> {
     stdin.flush().map_err(|e| e.to_string())
 }
 
-/// Запустить `jar` безголово в FreeJ2ME-plus и снять кадры.
+/// Run `jar` headless in FreeJ2ME-plus and capture frames.
 ///
-/// Ошибка окружения (нет `freej2me-lr.jar` / нет `java`) — это `Err` с понятным
-/// текстом; вызывающая сторона превращает такое в skip.
+/// An environment error (no `freej2me-lr.jar` / no `java`) is an `Err` with a clear
+/// message; the caller turns it into a skip.
 pub fn run_headless(
     jar: &Path,
     out_dir: &Path,
@@ -336,9 +336,9 @@ pub fn run_headless(
         .unwrap_or_else(|| out_dir.join("rms"));
     std::fs::create_dir_all(&rms).map_err(|e| e.to_string())?;
 
-    // Фронтенд раскодирует путь к jar кодировкой MIDlet-а (по умолчанию ISO_8859_1) —
-    // не-ASCII компоненты пути (например ~/Загрузки) коверкаются и «не найдено».
-    // Обходим ASCII-симлинком внутри out_dir.
+    // The frontend decodes the jar path with the MIDlet's encoding (ISO_8859_1 by default) —
+    // non-ASCII path components (e.g. ~/Загрузки) get mangled and end up "not found".
+    // We work around it with an ASCII symlink inside out_dir.
     if !jar.to_string_lossy().is_ascii() {
         let suffix = jar
             .extension()
@@ -351,8 +351,8 @@ pub fn run_headless(
         jar = link;
     }
 
-    // Эмулятор сам просит перезапуск, когда MIDlet-у нужна другая file.encoding
-    // (флаг в заголовке кадра) — уважаем не более 2 перезапусков.
+    // The emulator itself asks for a restart when the MIDlet needs a different file.encoding
+    // (a flag in the frame header) — we honour at most 2 restarts.
     let mut encoding = "ISO_8859_1";
     for _attempt in 0..3 {
         match run_once(&jar, out_dir, &lr, &java, encoding, inputs, opts, &rms)? {
@@ -385,7 +385,7 @@ fn run_once(
         stderr_log: stderr_path.to_string_lossy().into_owned(),
         rms_dir: rms.to_string_lossy().into_owned(),
     };
-    // Отсортированная копия скрипта ввода; расходуется по мере хода времени (A3).
+    // A sorted copy of the input script; consumed as time goes on (A3).
     let mut pending: Vec<InputEvent> = inputs.map(|v| v.to_vec()).unwrap_or_default();
     pending.sort_by_key(|e| e.t_ms);
     let mut pending: std::collections::VecDeque<InputEvent> = pending.into();
@@ -403,7 +403,7 @@ fn run_once(
         .spawn()
         .map_err(|e| format!("java executable not found ({java:?}): {e}"))?;
 
-    // Сторож этапа загрузки: гасим ТОЛЬКО свой экземпляр, по его хэндлу.
+    // Load-stage watchdog: kills ONLY our own instance, by its handle.
     let fired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     {
@@ -420,7 +420,7 @@ fn run_once(
             }
             if !ready.load(std::sync::atomic::Ordering::SeqCst) {
                 fired.store(true, std::sync::atomic::Ordering::SeqCst);
-                // гасим только наш собственный дочерний процесс, по его pid
+                // kill only our own child process, by its pid
                 unsafe { libc_kill(killer as i32) };
             }
         });
@@ -436,14 +436,14 @@ fn run_once(
         send_path(&mut stdin, 10, &jar.to_string_lossy())?;
         std::thread::sleep(Duration::from_secs_f64(opts.boot_wait_s));
 
-        // период для отображения t_ms -> индекс кадра в детерминированном режиме
-        // (нейтральные 100 мс, если frame_period_ms == 0)
+        // period for mapping t_ms -> frame index in deterministic mode
+        // (a neutral 100 ms if frame_period_ms == 0)
         let det_period = if opts.frame_period_ms != 0 { opts.frame_period_ms } else { 100 };
         let t0 = Instant::now();
         for i in 0..opts.max_frames {
             if opts.deterministic_capture {
-                // временная шкала по счёту: вбрасываем все события, попавшие в
-                // виртуальный слот этого кадра, независимо от стенных часов
+                // count-based timeline: inject all events that fall into this frame's
+                // virtual slot, regardless of the wall clock
                 let slot_ms = (i + 1) * det_period;
                 while pending.front().map(|e| e.t_ms < slot_ms).unwrap_or(false) {
                     inject_input(&mut stdin, &pending.pop_front().unwrap())?;
@@ -454,7 +454,7 @@ fn run_once(
                     inject_input(&mut stdin, &pending.pop_front().unwrap())?;
                 }
             }
-            send(&mut stdin, 15, 0)?; // просим свежий кадр
+            send(&mut stdin, 15, 0)?; // ask for a fresh frame
             match read_frame(&mut stdout, opts.width, opts.height)? {
                 FrameOut::Restart(enc) => return Ok(Some(enc)),
                 FrameOut::Frame(w, h, rgb) => {
@@ -499,15 +499,15 @@ fn run_once(
     Ok(RunOnce::Done(result))
 }
 
-/// Дождаться `+READY` от эмулятора.
+/// Wait for `+READY` from the emulator.
 ///
-/// ⭐ ПОЧИНЕН БАГ ОРИГИНАЛА (Python `diffrun._await_ready`): там цикл вызывал
-/// блокирующий `proc.stdout.readline()`, а срок `_READY_TIMEOUT_S = 30 с`
-/// проверялся ТОЛЬКО после того, как строка уже пришла. То есть на молчаливом
-/// зависании эмулятора (ровно тот случай, ради которого таймаут и заведён)
-/// сторож не срабатывал никогда и Python висел вечно. Здесь срок сторожит
-/// отдельный поток: по истечении он гасит СВОЙ дочерний процесс по его
-/// хэндлу — чтение упирается в EOF и мы возвращаем внятную ошибку.
+/// ⭐ FIXED A BUG OF THE ORIGINAL (Python `diffrun._await_ready`): there the loop called
+/// a blocking `proc.stdout.readline()`, and the `_READY_TIMEOUT_S = 30 s` deadline
+/// was checked ONLY after a line had already arrived. So on a silent emulator hang
+/// (exactly the case the timeout exists for) the watchdog never fired and Python
+/// hung forever. Here the deadline is guarded by a separate thread: when it
+/// expires it kills OUR OWN child process by its handle — the read hits EOF and
+/// we return a clear error.
 fn await_ready(stdout: &mut impl Read, watchdog: &std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<(), String> {
     use std::sync::atomic::Ordering;
     let mut line: Vec<u8> = Vec::new();
@@ -541,9 +541,9 @@ fn await_ready(stdout: &mut impl Read, watchdog: &std::sync::Arc<std::sync::atom
     }
 }
 
-// ---- A4: снимки RMS ---------------------------------------------------------
-/// Отображение относительный-путь -> sha256 для каждого файла под каталогом RMS,
-/// на который был направлен эмулятор (команда 11). Снимать до и после прогона.
+// ---- A4: RMS snapshots ------------------------------------------------------
+/// Mapping relative-path -> sha256 for every file under the RMS directory the
+/// emulator was pointed at (command 11). Take it before and after a run.
 pub fn snapshot_rms(rms_dir: &Path) -> BTreeMap<String, String> {
     let mut snap = BTreeMap::new();
     if !rms_dir.exists() {
@@ -559,7 +559,7 @@ pub fn snapshot_rms(rms_dir: &Path) -> BTreeMap<String, String> {
     snap
 }
 
-/// Какие хранилища записей появились / исчезли / изменились между снимками.
+/// Which record stores appeared / disappeared / changed between snapshots.
 pub fn diff_rms(
     before: &BTreeMap<String, String>,
     after: &BTreeMap<String, String>,
@@ -584,8 +584,8 @@ pub fn diff_rms(
     out
 }
 
-/// `kill(pid, SIGKILL)` для СВОЕГО дочернего процесса. Гасим строго по pid
-/// собственного экземпляра — никаких `pkill`/`killall` по имени.
+/// `kill(pid, SIGKILL)` for OUR OWN child process. Strictly by the pid of our
+/// own instance — no `pkill`/`killall` by name.
 #[cfg(unix)]
 unsafe fn libc_kill(pid: i32) {
     extern "C" {

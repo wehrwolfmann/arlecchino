@@ -1,28 +1,28 @@
-//! Этап A7 (PLAN_runtime.md, блок A) — детерминированное покадровое воспроизведение
-//! через инструментацию байткода MIDlet (путь *(b)*: инструментируем MIDlet, GPL-эмулятор
-//! НЕ форкаем).
+//! Stage A7 (PLAN_runtime.md, block A) — deterministic frame-by-frame replay
+//! via instrumentation of the MIDlet bytecode (path *(b)*: we instrument the MIDlet
+//! and do NOT fork the GPL emulator).
 //!
-//! Порт `arlecchino/fixedclock.py` — оркестрация вокруг
-//! `assets/DeterministicClockTransformer.java`. Сам трансформер остаётся на Java:
-//! он работает через ASM, а по решению проекта граница Rust/Java = граница процесса.
-//! Трансформер переписывает jar MIDlet-а так, что `System.currentTimeMillis()`/
-//! `nanoTime()` становятся виртуальными часами (счётчик с фиксированным шагом), а
-//! `new Random(...)` получает фиксированное зерно — отрисованное состояние MIDlet-а
-//! становится чистой функцией от ПОСЛЕДОВАТЕЛЬНОСТИ его обращений к часам/ГСЧ и не
-//! зависит от часов хоста. Два воспроизведения одного ввода тогда дают побайтово
-//! одинаковые кадры даже на FreeJ2ME-plus (его недетерминизм давал базовый Jaccard
-//! 0.86 на Аллодах).
+//! Port of `arlecchino/fixedclock.py` — orchestration around
+//! `assets/DeterministicClockTransformer.java`. The transformer itself stays in Java:
+//! it works through ASM, and by project decision the Rust/Java boundary = the process boundary.
+//! The transformer rewrites the MIDlet jar so that `System.currentTimeMillis()`/
+//! `nanoTime()` become a virtual clock (a counter with a fixed step), and
+//! `new Random(...)` gets a fixed seed — the MIDlet's rendered state becomes a
+//! pure function of the SEQUENCE of its clock/RNG calls and does not depend on the
+//! host clock. Two replays of the same input then give byte-identical frames
+//! even on FreeJ2ME-plus (its non-determinism gave a baseline Jaccard of
+//! 0.86 on Allods).
 //!
-//! Используется ТА ЖЕ инфраструктура ASM, что и у переименователя членов
-//! (`rename`): jar-ы ASM под `<engines>/asm` и каталог скомпилированных
-//! помощников `_classes/`.
+//! It uses THE SAME ASM infrastructure as the member renamer
+//! (`rename`): the ASM jars under `<engines>/asm` and the directory of compiled
+//! helpers `_classes/`.
 //!
-//! Всё деградирует мягко: нет jar-ов ASM или скомпилированного помощника —
-//! `transform` пишет об этом и возвращает None, вызывающий откатывается на
-//! неинструментированный jar (обычный недетерминированный режим MVP).
+//! Everything degrades gracefully: no ASM jars or no compiled helper —
+//! `transform` says so and returns None, and the caller falls back to the
+//! uninstrumented jar (the normal non-deterministic MVP mode).
 //!
-//! ТОЛЬКО ПО ЗАПРОСУ. Ничего здесь не выполняется без явного `difftest --fixed-clock`
-//! или переменной `ARLECCHINO_FIXED_CLOCK`.
+//! ON REQUEST ONLY. Nothing here runs without an explicit `difftest --fixed-clock`
+//! or the `ARLECCHINO_FIXED_CLOCK` variable.
 
 use crate::rename;
 use crate::util;
@@ -32,8 +32,8 @@ use std::time::Duration;
 pub const HELPER_CLASS: &str = "DeterministicClockTransformer";
 pub const HELPER_SOURCE: &str = include_str!("../assets/DeterministicClockTransformer.java");
 
-/// Переменная окружения: если истинна, difftest инструментирует оба jar перед
-/// прогоном. CLI `--fixed-clock` включает то же самое явно.
+/// Environment variable: if true, difftest instruments both jars before the
+/// run. The CLI `--fixed-clock` turns on the same thing explicitly.
 pub const ENV_FLAG: &str = "ARLECCHINO_FIXED_CLOCK";
 
 pub fn env_enabled() -> bool {
@@ -47,18 +47,18 @@ fn helper_class_file(root: Option<&Path>) -> PathBuf {
     rename::helper_classes_dir(root).join(format!("{HELPER_CLASS}.class"))
 }
 
-/// Скомпилирован ли A7-трансформер.
+/// Whether the A7 transformer is compiled.
 pub fn helper_compiled(root: Option<&Path>) -> bool {
     helper_class_file(root).exists()
 }
 
-/// true, только если есть и jar-ы ASM, и скомпилированный A7-трансформер.
+/// true only if both the ASM jars and the compiled A7 transformer are present.
 pub fn available(root: Option<&Path>) -> bool {
     !rename::asm_jars(root).is_empty() && helper_compiled(root)
 }
 
-/// javac-компиляция `DeterministicClockTransformer.java` против jar-ов ASM
-/// (идемпотентно). Используется командой `setup` рядом с переименователем членов.
+/// javac compilation of `DeterministicClockTransformer.java` against the ASM jars
+/// (idempotent). Used by the `setup` command next to the member renamer.
 pub fn compile_helper(root: Option<&Path>) -> String {
     let jars = rename::asm_jars(root);
     if jars.is_empty() {
@@ -94,13 +94,13 @@ pub fn compile_helper(root: Option<&Path>) -> String {
     }
 }
 
-/// Jar-ы, несущие API MIDP (`javax.microedition.*`) — отдаются трансформеру
-/// как `--cp`, чтобы пересчёт стекмап-кадров мог разрешить супертипы MIDlet-а
+/// Jars carrying the MIDP API (`javax.microedition.*`) — passed to the transformer
+/// as `--cp` so that recomputing stack-map frames can resolve the MIDlet's supertypes
 /// (Canvas, MIDlet, RecordStore, …).
 ///
-/// Их нужен только запасной путь ПЕРЕСЧЁТА кадров (класс, у которого кадры
-/// вырезаны); обычный путь сохраняет собственные кадры jar и ничего не разрешает.
-/// Поэтому отсутствие этих jar — не ошибка.
+/// Only the fallback frame-RECOMPUTATION path needs them (a class whose frames
+/// were stripped); the normal path keeps the jar's own frames and resolves nothing.
+/// So the absence of these jars is not an error.
 pub fn api_classpath(root: Option<&Path>) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Some(rt) = crate::midprun::find_midp_rt(None, root) {
@@ -122,10 +122,10 @@ pub fn api_classpath(root: Option<&Path>) -> Vec<PathBuf> {
     out
 }
 
-/// Позвать ASM-трансформер: переписать `jar` -> `out_jar` с виртуальными часами и
-/// ГСЧ с фиксированным зерном, внедрив самодостаточный рантайм-класс
-/// `arlecchino/det/Det`. Возвращает out_jar при успехе, None при любой неудаче
-/// (с печатью), чтобы вызывающий откатился на исходный jar.
+/// Call the ASM transformer: rewrite `jar` -> `out_jar` with a virtual clock and a
+/// fixed-seed RNG, injecting the self-contained runtime class
+/// `arlecchino/det/Det`. Returns out_jar on success, None on any failure
+/// (with a printed message), so the caller falls back to the original jar.
 pub fn transform(
     jar: &Path,
     out_jar: &Path,
@@ -175,8 +175,8 @@ pub fn transform(
         return None;
     }
     println!("   fixed-clock: {}", r.stdout.trim());
-    // Показываем предупреждения помощника (например, типы, которые он не смог
-    // разрешить при пересчёте кадров), а не даём им сгинуть в трубе.
+    // Show the helper's warnings (e.g. types it could not resolve while recomputing
+    // frames) instead of letting them vanish in the pipe.
     for line in r.stderr.trim().lines() {
         if !line.trim().is_empty() {
             println!("   fixed-clock: {}", line.trim());
@@ -185,11 +185,11 @@ pub fn transform(
     Some(out_jar.to_path_buf())
 }
 
-/// Решить-и-выполнить инструментацию A7.
+/// Decide on and perform the A7 instrumentation.
 ///
-/// `enabled` (из `--fixed-clock` или `env_enabled`): при false вернуть исходный
-/// `jar` без изменений. При true переписать в `<stem>.fixedclock.jar` внутри
-/// `workdir`; при любой неудаче откатиться на исходный jar.
+/// `enabled` (from `--fixed-clock` or `env_enabled`): when false, return the original
+/// `jar` unchanged. When true, rewrite into `<stem>.fixedclock.jar` inside
+/// `workdir`; on any failure fall back to the original jar.
 pub fn maybe_transform(jar: &Path, workdir: &Path, root: Option<&Path>, enabled: bool) -> PathBuf {
     if !enabled {
         return jar.to_path_buf();
