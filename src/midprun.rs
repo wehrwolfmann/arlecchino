@@ -577,7 +577,7 @@ pub fn run_midlet(game: &Path, midp_rt: &Path, o: &WindowOpts) -> i32 {
     }
     if let Ok(sock) = std::env::var("ALLODS_SHELL_SOCKET") {
         if !sock.is_empty() {
-            println!("  allods-shell мост включён -> {sock} (запусти allods-renderer заранее)");
+            println!("  allods-shell bridge enabled -> {sock} (start allods-renderer beforehand)");
         }
     }
     println!("  launching: {}", argv.join(" "));

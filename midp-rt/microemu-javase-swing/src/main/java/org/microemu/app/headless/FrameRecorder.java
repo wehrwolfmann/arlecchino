@@ -75,7 +75,7 @@ public class FrameRecorder implements DisplayRepaintListener {
 			return 2;
 		}
 		if (InputScript.byTick(events)) {
-			System.err.println("inputs: события по tick требуют режима --ticks N");
+			System.err.println("inputs: tick-based events require --ticks N mode");
 			return 2;
 		}
 		sleep(opts.bootWaitMs);

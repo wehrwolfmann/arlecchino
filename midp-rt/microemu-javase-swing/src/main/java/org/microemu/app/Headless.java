@@ -183,7 +183,7 @@ public class Headless {
 				return;
 			}
 			if (!events.isEmpty() && !InputScript.byTick(events)) {
-				System.err.println("inputs: в режиме --ticks события задаются полем tick, а не t_ms");
+				System.err.println("inputs: in --ticks mode events are given by the tick field, not t_ms");
 				System.exit(2);
 				return;
 			}

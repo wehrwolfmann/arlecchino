@@ -80,11 +80,11 @@ public final class MidpTrace {
 				out = new PrintWriter(new BufferedWriter(new FileWriter(TARGET)));
 			}
 		} catch (IOException e) {
-			Logger.warn("midprt.trace: не удалось открыть " + TARGET + ": " + e);
+			Logger.warn("midprt.trace: cannot open " + TARGET + ": " + e);
 			return;
 		}
 		t0 = System.currentTimeMillis();
-		out.println("# midp-rt trace, кадров с подробностями: " + MAX_FRAMES);
+		out.println("# midp-rt trace, frames with details: " + MAX_FRAMES);
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
 			public void run() {
 				finish();
@@ -108,8 +108,8 @@ public final class MidpTrace {
 				out.println("F " + frame + " t=" + (System.currentTimeMillis() - t0));
 			}
 		} else if (frame == MAX_FRAMES) {
-			out.println("# ... подробности отключены после кадра " + MAX_FRAMES
-					+ ", гистограмма продолжает считаться");
+			out.println("# ... details disabled after frame " + MAX_FRAMES
+					+ ", the histogram keeps counting");
 			out.flush();
 		}
 	}
@@ -327,7 +327,7 @@ public final class MidpTrace {
 		if (out == null) {
 			return;
 		}
-		out.println("# histogram (кадров всего: " + (frame + 1) + ")");
+		out.println("# histogram (frames total: " + (frame + 1) + ")");
 		for (Iterator it = counts.entrySet().iterator(); it.hasNext();) {
 			Map.Entry e = (Map.Entry) it.next();
 			out.println("# " + e.getKey() + " " + ((int[]) e.getValue())[0]);

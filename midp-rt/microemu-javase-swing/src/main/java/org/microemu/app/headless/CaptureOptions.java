@@ -94,7 +94,7 @@ public class CaptureOptions {
 			} else if (a.equals("--ticks")) {
 				o.ticks = intValue(args, ++i, a);
 				if (o.ticks < 1) {
-					throw new IllegalArgumentException("--ticks: ожидается число >= 1\n" + USAGE);
+					throw new IllegalArgumentException("--ticks: a number >= 1 is expected\n" + USAGE);
 				}
 			} else if (a.equals("--tick-timeout-ms")) {
 				o.tickTimeoutMs = intValue(args, ++i, a);
@@ -114,7 +114,7 @@ public class CaptureOptions {
 		}
 		if (o.frames < 1 || o.periodMs < 0 || o.bootWaitMs < 0) {
 			throw new IllegalArgumentException("--frames/--period-ms/--boot-wait-ms: "
-					+ "ожидаются неотрицательные числа (--frames >= 1)\n" + USAGE);
+					+ "non-negative numbers are expected (--frames >= 1)\n" + USAGE);
 		}
 		if (!o.runtimeArgs.isEmpty()) {
 			o.target = (String) o.runtimeArgs.get(o.runtimeArgs.size() - 1);
@@ -127,7 +127,7 @@ public class CaptureOptions {
 
 	private static String value(String[] args, int i, String flag) {
 		if (i >= args.length) {
-			throw new IllegalArgumentException(flag + ": не хватает значения\n" + USAGE);
+			throw new IllegalArgumentException(flag + ": missing value\n" + USAGE);
 		}
 		return args[i];
 	}
@@ -136,7 +136,7 @@ public class CaptureOptions {
 		try {
 			return Integer.parseInt(value(args, i, flag));
 		} catch (NumberFormatException e) {
-			throw new IllegalArgumentException(flag + ": ожидается число, получено "
+			throw new IllegalArgumentException(flag + ": a number is expected, got "
 					+ args[i] + "\n" + USAGE);
 		}
 	}
@@ -187,9 +187,9 @@ public class CaptureOptions {
 			cls = null;
 		}
 		if (cls == null) {
-			System.err.println("headless: MIDlet-1 не найден в " + last
-					+ " — останется Launcher-список (в headless он не репейнтится, "
-					+ "кадры будут пустыми)");
+			System.err.println("headless: MIDlet-1 not found in " + last
+					+ " — the Launcher list stays (in headless it never repaints, "
+					+ "so the frames will be blank)");
 			return;
 		}
 		runtimeArgs.remove(runtimeArgs.size() - 1);

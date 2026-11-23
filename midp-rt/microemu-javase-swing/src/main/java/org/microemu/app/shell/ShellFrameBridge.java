@@ -68,14 +68,14 @@ public final class ShellFrameBridge implements DisplayRepaintListener {
 			return null;
 		}
 		if (!(component instanceof J2SEGraphicsSurfaceDisplayComponent)) {
-			System.err.println("[allods-shell] DisplayComponent не поддерживает "
-					+ "поверхность кадра — мост не активирован");
+			System.err.println("[allods-shell] the DisplayComponent does not support "
+					+ "a frame surface — the bridge is not activated");
 			return null;
 		}
 		ShellFrameBridge bridge = new ShellFrameBridge(path);
 		((J2SEGraphicsSurfaceDisplayComponent) component).addDisplayRepaintListener(bridge);
 		bridge.start();
-		System.err.println("[allods-shell] мост кадров включён -> " + path);
+		System.err.println("[allods-shell] frame bridge enabled -> " + path);
 		return bridge;
 	}
 
@@ -217,15 +217,15 @@ public final class ShellFrameBridge implements DisplayRepaintListener {
 				int code = buf.get() & 0xFF;
 				String name = (code >= 0 && code < CODE_NAMES.length) ? CODE_NAMES[code] : null;
 				if (name == null) {
-					System.err.println("[allods-shell] неизвестный код ввода " + code);
+					System.err.println("[allods-shell] unknown input code " + code);
 					continue;
 				}
 				boolean press = (kind == 1);
 				try {
 					org.microemu.app.headless.InputScript.injectKey(name, press);
 				} catch (RuntimeException re) {
-					System.err.println("[allods-shell] инжекция ввода " + name
-							+ " не удалась: " + re);
+					System.err.println("[allods-shell] injecting input " + name
+							+ " failed: " + re);
 				}
 			}
 		} catch (IOException e) {
@@ -248,7 +248,7 @@ public final class ShellFrameBridge implements DisplayRepaintListener {
 	private void streamFrames(SocketChannel ch) throws IOException {
 		boolean handshakeSent = false;
 		ByteBuffer rgba = null;
-		System.err.println("[allods-shell] подключился к рендеру " + socketPath);
+		System.err.println("[allods-shell] connected to the renderer " + socketPath);
 		while (running) {
 			int[] xrgb;
 			int w, h;
@@ -297,7 +297,7 @@ public final class ShellFrameBridge implements DisplayRepaintListener {
 	private static void writeFully(SocketChannel ch, ByteBuffer buf) throws IOException {
 		while (buf.hasRemaining()) {
 			if (ch.write(buf) < 0) {
-				throw new IOException("сокет закрыт при записи");
+				throw new IOException("socket closed while writing");
 			}
 		}
 	}

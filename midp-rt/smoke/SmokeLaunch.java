@@ -116,7 +116,7 @@ public class SmokeLaunch {
 
 		J2SEGraphicsSurface surface = lastSurface;
 		if (surface == null) {
-			System.err.println("NO_FRAME (repaint не пришёл)");
+			System.err.println("NO_FRAME (no repaint arrived)");
 			System.exit(2);
 		}
 		synchronized (surface) {

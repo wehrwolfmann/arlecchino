@@ -44,8 +44,8 @@ public class TickDriver implements TickInput.Driver {
 		for (int i = 0; i < events.size(); i++) {
 			InputScript.Event e = events.get(i);
 			if (e.tick >= opts.ticks) {
-				System.err.println("inputs: событие на тике " + e.tick + " за пределами --ticks "
-						+ opts.ticks + " — не будет доставлено");
+				System.err.println("inputs: an event at tick " + e.tick + " is beyond --ticks "
+						+ opts.ticks + " — it will not be delivered");
 			}
 		}
 	}
@@ -89,9 +89,9 @@ public class TickDriver implements TickInput.Driver {
 				return 3;
 			}
 			if (System.currentTimeMillis() - lastProgress > opts.tickTimeoutMs) {
-				System.err.println("TICKS_STALLED: за " + opts.tickTimeoutMs
-						+ " мс не наступил новый тик (последний " + lastTick + " из " + opts.ticks
-						+ "); игра перестала рисовать кадры?");
+				System.err.println("TICKS_STALLED: no new tick within " + opts.tickTimeoutMs
+						+ " ms (last " + lastTick + " of " + opts.ticks
+						+ "); has the game stopped drawing frames?");
 				return 4;
 			}
 		}

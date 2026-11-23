@@ -86,7 +86,7 @@ public class InputScript {
 	public static void inject(Event e) {
 		String action = (e.action == null) ? "press" : e.action;
 		if (!action.equals("press") && !action.equals("release") && !action.equals("tap")) {
-			System.err.println("inputs: неизвестное действие " + action + " — пропущено");
+			System.err.println("inputs: unknown action " + action + " — skipped");
 			return;
 		}
 		if (action.equals("press") || action.equals("tap")) {
@@ -116,7 +116,7 @@ public class InputScript {
 		}
 		ButtonName name = (ButtonName) KEYMAP.get(String.valueOf(key).toUpperCase());
 		if (name == null) {
-			System.err.println("inputs: неизвестная клавиша " + key + " — пропущена");
+			System.err.println("inputs: unknown key " + key + " — skipped");
 			return;
 		}
 		J2SEButton btn = J2SEDeviceButtonsHelper.getButton(name);
@@ -124,7 +124,7 @@ public class InputScript {
 			btn = J2SEDeviceButtonsHelper.getButton(ButtonName.BACK_SPACE);
 		}
 		if (btn == null) {
-			System.err.println("inputs: у устройства нет кнопки " + key + " — пропущена");
+			System.err.println("inputs: the device has no key " + key + " — skipped");
 			return;
 		}
 		if (org.microemu.TickInput.isDelivering() && DeviceFactory.getDevice().hasRepeatEvents()) {
@@ -181,7 +181,7 @@ public class InputScript {
 			}
 		}
 		if (byTick != 0 && byTick != events.size()) {
-			throw new IOException("inputs JSON: события по t_ms и по tick в одном файле смешивать нельзя");
+			throw new IOException("inputs JSON: t_ms-based and tick-based events cannot be mixed in one file");
 		}
 		// the sort is stable: events of the same tick/moment keep the file order
 		Collections.sort(events, new Comparator<Event>() {
@@ -212,10 +212,10 @@ public class InputScript {
 			Object tk = obj.get("tick");
 			if (tk != null) {
 				if (!(tk instanceof Long) || ((Long) tk).longValue() < 0) {
-					throw new IOException("inputs JSON: tick должен быть целым >= 0, получено " + tk);
+					throw new IOException("inputs JSON: tick must be an integer >= 0, got " + tk);
 				}
 				if (t != null) {
-					throw new IOException("inputs JSON: у события и t_ms, и tick — нужно одно");
+					throw new IOException("inputs JSON: the event has both t_ms and tick — only one is allowed");
 				}
 				e.tick = ((Long) tk).longValue();
 			}
@@ -229,7 +229,7 @@ public class InputScript {
 				break;
 			}
 			if (c != ',') {
-				throw new IOException("inputs JSON: ожидалась ',' или ']' на позиции " + (p.i - 1));
+				throw new IOException("inputs JSON: expected ',' or ']' at position " + (p.i - 1));
 			}
 			p.ws();
 		}
@@ -253,7 +253,7 @@ public class InputScript {
 
 		char peek() throws IOException {
 			if (i >= s.length()) {
-				throw new IOException("inputs JSON: неожиданный конец файла");
+				throw new IOException("inputs JSON: unexpected end of file");
 			}
 			return s.charAt(i);
 		}
@@ -266,7 +266,7 @@ public class InputScript {
 
 		void expect(char c) throws IOException {
 			if (next() != c) {
-				throw new IOException("inputs JSON: ожидался '" + c + "' на позиции " + (i - 1));
+				throw new IOException("inputs JSON: expected '" + c + "' at position " + (i - 1));
 			}
 		}
 
@@ -292,7 +292,7 @@ public class InputScript {
 					break;
 				}
 				if (c != ',') {
-					throw new IOException("inputs JSON: ожидалась ',' или '}' на позиции " + (i - 1));
+					throw new IOException("inputs JSON: expected ',' or '}' at position " + (i - 1));
 				}
 			}
 			return m;
@@ -318,7 +318,7 @@ public class InputScript {
 				i += 4;
 				return null;
 			}
-			throw new IOException("inputs JSON: неожиданный символ '" + c + "' на позиции " + i);
+			throw new IOException("inputs JSON: unexpected character '" + c + "' at position " + i);
 		}
 
 		String string() throws IOException {
@@ -339,7 +339,7 @@ public class InputScript {
 					case 'f': b.append('\f'); break;
 					case 'u':
 						if (i + 4 > s.length()) {
-							throw new IOException("inputs JSON: оборванный \\u");
+							throw new IOException("inputs JSON: truncated \\u");
 						}
 						b.append((char) Integer.parseInt(s.substring(i, i + 4), 16));
 						i += 4;
@@ -371,7 +371,7 @@ public class InputScript {
 			try {
 				return fp ? (Number) Double.valueOf(tok) : (Number) Long.valueOf(tok);
 			} catch (NumberFormatException e) {
-				throw new IOException("inputs JSON: не число: " + tok);
+				throw new IOException("inputs JSON: not a number: " + tok);
 			}
 		}
 	}
