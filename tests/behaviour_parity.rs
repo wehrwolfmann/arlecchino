@@ -11,7 +11,7 @@
 //! once this edition passed the check. The golden file is self-contained — it is in the repository,
 //! and there is nowhere to re-take it from and no need to. Should the reference ever need to be
 //! rebuilt, the full history of the Python edition is kept as a bundle at
-//! `~/Projects/_архив/arlecchino-python-полная-история.bundle`.
+//! `path/to/arlecchino-python-full-history.bundle`.
 //!
 //! What the golden file does NOT check (and why): three deliberate fixes of bugs in
 //! the original — see `normsig`/`canon_ref` in `semdiff` and `await_ready` in `diffrun`;

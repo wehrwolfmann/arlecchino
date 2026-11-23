@@ -247,15 +247,15 @@ themselves are **never committed** — they are supplied at run time.
 The 712 → 2 figure was produced with a machine-local `arlecchino.local.toml` that was
 never committed anywhere — it existed as a single copy on one disk. Since the engine set
 and, in particular, the unreleased CFR build are part of what the number *means*, the
-file is recorded here verbatim. It is not a working configuration for the Rust edition
+file is recorded here verbatim (only the local path is replaced with a placeholder). It is not a working configuration for the Rust edition
 (the live gate uses `regress/engines.6.toml`); it is the provenance of a number.
 
 ```toml
 # Local test config: points at the engines already present under
-# ~/Загрузки/allods_re/tools (so `decompile --config arlecchino.local.toml`
+# path/to/tools (so `decompile --config arlecchino.local.toml`
 # works without running `arlecchino setup`).  Not for distribution.
 
-engines_root = "~/Загрузки/allods_re/tools"
+engines_root = "path/to/tools"
 
 [[engine]]
 name = "vineflower"

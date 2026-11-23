@@ -34,7 +34,7 @@
 #
 # RE-RUN 2026-09-02 with the Python tree renamed out of the way, as the last check
 # before deleting it: 11 jars checked, 0 mismatches, exit 0.  The Python edition is
-# gone from this machine (its full history is a bundle under ~/Projects/_архив/), so
+# gone from this machine (its full history is kept as a local git bundle), so
 # these numbers can no longer be re-derived from it — they now stand on their own,
 # and regress/run.sh is the only thing that keeps them honest.
 #

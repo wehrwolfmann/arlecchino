@@ -10,11 +10,11 @@ Stages A5/A6 of the runtime plan closed with the first run of `arlecchino diffte
 
 ### Preparing the pair
 
-1. **Original:** `~/Загрузки/J2ME/Allods_1_2_240x320.jar` (Nival, 240×320).
+1. **Original:** `path/to/Allods_1_2_240x320.jar` (Nival, 240×320).
 2. **Rebuild:** the full pipeline with the opt-in executability flag:
 
    ```
-   arlecchino decompile ~/Загрузки/J2ME/Allods_1_2_240x320.jar \
+   arlecchino decompile path/to/Allods_1_2_240x320.jar \
        -o /tmp/arl_allods_flat --config arlecchino.local.toml --flatten-packages
    ```
 
@@ -43,7 +43,7 @@ Stages A5/A6 of the runtime plan closed with the first run of `arlecchino diffte
 ### Noise calibration (original twice, no input, 40 frames × 150 ms)
 
 ```
-arlecchino difftest --calibrate ~/Загрузки/J2ME/Allods_1_2_240x320.jar \
+arlecchino difftest --calibrate path/to/Allods_1_2_240x320.jar \
     -o /tmp/arl_dt_calib --frames 40 --period-ms 150
 ```
 
@@ -60,7 +60,7 @@ This confirms the model from the A2 spike: content is deterministic, timing is n
 ### Verdict, orig vs rebuilt (with the input script, 70 frames × 150 ms)
 
 ```
-arlecchino difftest ~/Загрузки/J2ME/Allods_1_2_240x320.jar \
+arlecchino difftest path/to/Allods_1_2_240x320.jar \
     /tmp/arl_allods_rebuilt.jar --input inputs.json -o /tmp/arl_dt_allods \
     --frames 70 --period-ms 150
 ```

@@ -337,7 +337,7 @@ pub fn run_headless(
     std::fs::create_dir_all(&rms).map_err(|e| e.to_string())?;
 
     // The frontend decodes the jar path with the MIDlet's encoding (ISO_8859_1 by default) —
-    // non-ASCII path components (e.g. ~/Загрузки) get mangled and end up "not found".
+    // non-ASCII path components (e.g. ~/Téléchargements) get mangled and end up "not found".
     // We work around it with an ASCII symlink inside out_dir.
     if !jar.to_string_lossy().is_ascii() {
         let suffix = jar

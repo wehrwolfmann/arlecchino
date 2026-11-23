@@ -34,7 +34,7 @@ The same `<engines>/asm` (ASM 9.7, BSD-3-Clause, invoked and not vendored) and t
 
 ## Live test on Allods (2026-06-12)
 
-Original: `~/Загрузки/J2ME/Allods_1_2_240x320.jar`. Input: 4 × FIRE (splash → menu → gameplay screen), 70 frames × 150 ms.
+Original: `path/to/Allods_1_2_240x320.jar`. Input: 4 × FIRE (splash → menu → gameplay screen), 70 frames × 150 ms.
 
 ### Bytecode
 
