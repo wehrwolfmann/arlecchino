@@ -1,4 +1,4 @@
-// FlattenFixture — builds the Stage Э9 cross-package test jar.
+// FlattenFixture — builds the Stage E9 cross-package test jar.
 //
 // It compiles nothing itself; it takes two already-compiled DEFAULT-package classes
 // (`App` and `Lib`, both legal Java referencing each other in the default package) and

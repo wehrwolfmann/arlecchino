@@ -1,6 +1,6 @@
 // SynthObfuscator — ASM post-processor that injects source-ILLEGAL member collisions
 // into already-compiled .class files, producing a synthetic "obfuscated" jar for the
-// Arlecchino Stage Э1 test fixture.
+// Arlecchino Stage E1 test fixture.
 //
 // Nothing is downloaded or vendored: ASM (org.ow2.asm, BSD-3-Clause) is INVOKED against
 // the jars already present under ~/.arlecchino/engines/asm (same jars MemberRenamer is

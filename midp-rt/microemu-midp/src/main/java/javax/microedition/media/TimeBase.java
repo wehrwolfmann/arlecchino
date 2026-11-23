@@ -1,7 +1,7 @@
 /*
- *  arlecchino-midp-rt: минимальный API-заглушечный слой JSR-135 (MMAPI),
- *  написан по публичной спецификации JSR-135 для форка arlecchino-midp-rt
- *  (2026), LGPL 2.1 — см. LICENSE/NOTICE в корне репозитория.
+ *  arlecchino-midp-rt: a minimal API stub layer for JSR-135 (MMAPI),
+ *  written from the public JSR-135 specification for the arlecchino-midp-rt fork
+ *  (2026), LGPL 2.1 — see LICENSE/NOTICE at the repository root.
  */
 package javax.microedition.media;
 

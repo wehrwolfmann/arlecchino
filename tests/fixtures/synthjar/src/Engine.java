@@ -1,4 +1,4 @@
-// Base source for the synthetic obfuscated jar (Stage Э1 test fixture).
+// Base source for the synthetic obfuscated jar (Stage E1 test fixture).
 //
 // These classes are compiled with javac (legal Java), then POST-PROCESSED with ASM
 // (SynthObfuscator) to inject source-ILLEGAL member collisions that mirror what

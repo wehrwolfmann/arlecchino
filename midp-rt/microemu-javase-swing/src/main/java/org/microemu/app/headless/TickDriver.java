@@ -1,21 +1,21 @@
 /*
- *  arlecchino-midp-rt: стенд режима тиков (headless --ticks N).
+ *  arlecchino-midp-rt: the tick mode harness (headless --ticks N).
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория. База форка — MicroEmulator (barteo/microemu).
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root. The fork is based on MicroEmulator (barteo/microemu).
  *
- *  Детерминированный прогон: ни ввод, ни снимки кадров, ни конец прогона не
- *  зависят от часов стены. Всё происходит на границе тика (TickInput) в
- *  потоке, который рисует кадр:
+ *  A deterministic run: neither input, nor frame snapshots, nor the end of the run
+ *  depend on the wall clock. Everything happens at the tick boundary (TickInput) in
+ *  the thread that draws the frame:
  *
- *    тик n, до "F n":  снимок кадра n-1 (frame_{n-1}.png), при n == N —
- *                       index.json, "TICKS_DONE N" и выход из JVM;
- *    тик n, после "F n": события сценария с tick == n по порядку файла,
- *                       синхронно (keyPressed/keyReleased игры вызываются
- *                       прямо здесь, до paint кадра n).
+ *    tick n, before "F n": snapshot of frame n-1 (frame_{n-1}.png); when n == N —
+ *                       index.json, "TICKS_DONE N" and JVM exit;
+ *    tick n, after "F n": scenario events with tick == n in file order,
+ *                       synchronously (the game's keyPressed/keyReleased are called
+ *                       right here, before frame n is painted).
  *
- *  Единственное, что смотрит на часы стены, — сторож: если новый тик не
- *  наступил за --tick-timeout-ms, прогон считается зависшим (выход 4).
+ *  The only thing that looks at the wall clock is the watchdog: if no new tick
+ *  arrives within --tick-timeout-ms, the run is considered hung (exit 4).
  */
 package org.microemu.app.headless;
 
@@ -27,7 +27,7 @@ public class TickDriver implements TickInput.Driver {
 
 	private final CaptureOptions opts;
 
-	private final FrameRecorder recorder; // null — без --frames-dir
+	private final FrameRecorder recorder; // null — without --frames-dir
 
 	private final List<InputScript.Event> events;
 
@@ -73,14 +73,14 @@ public class TickDriver implements TickInput.Driver {
 
 	public void deliver(int tick) {
 		while (next < events.size() && events.get(next).tick < tick) {
-			next++; // не бывает: тики идут подряд, но не зависаем на чужом
+			next++; // cannot happen: ticks are consecutive, but do not hang on a stray one
 		}
 		while (next < events.size() && events.get(next).tick == tick) {
 			InputScript.inject(events.get(next++));
 		}
 	}
 
-	/** Поток main: ждать конца прогона (выход — из beforeTick) или зависания. */
+	/** Main thread: wait for the end of the run (exit happens in beforeTick) or a hang. */
 	public int await() {
 		while (true) {
 			try {

@@ -1,32 +1,32 @@
 /*
- *  arlecchino-midp-rt: разбор CLI-флагов headless-захвата кадров.
+ *  arlecchino-midp-rt: parsing of the headless frame capture CLI flags.
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория. База форка — MicroEmulator (barteo/microemu).
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root. The fork is based on MicroEmulator (barteo/microemu).
  *
- *  Свои флаги (снимаются ДО передачи остатка в org.microemu.app.Common):
+ *  Our own flags (stripped BEFORE the rest is passed to org.microemu.app.Common):
  *
- *    --frames-dir DIR    включить захват: PNG-кадры + index.json в DIR
- *    --frames N          сколько кадров снять (по умолчанию 30)
- *    --period-ms MS      период между кадрами (по умолчанию 100)
- *    --boot-wait-ms MS   пауза после старта MIDlet до первого кадра (2000)
- *    --inputs FILE       JSON-скрипт ввода [{t_ms,key,action},...]
- *                        (формат difftest Arlecchino, docs/difftest_format.md);
- *                        с --ticks — события по тикам [{tick,key,action},...]
- *    --ticks N           детерминированный режим: прогнать ровно N тиков
- *                        (границ кадра, см. org.microemu.TickInput) и выйти;
- *                        ввод доставляется синхронно на своём тике, кадр
- *                        (при --frames-dir) снимается на каждом тике,
- *                        --frames/--period-ms/--boot-wait-ms не действуют
- *    --tick-timeout-ms MS  сторож режима --ticks: выход с кодом 4, если
- *                        новый тик не наступил за MS мс стены (30000)
- *    --rms DIR           file-backed RMS ПЛОСКО в DIR (расширение upstream
- *                        `--rms (file|memory)`: значение-путь = каталог)
+ *    --frames-dir DIR    enable capture: PNG frames + index.json in DIR
+ *    --frames N          how many frames to take (default 30)
+ *    --period-ms MS      period between frames (default 100)
+ *    --boot-wait-ms MS   pause after the MIDlet starts before the first frame (2000)
+ *    --inputs FILE       JSON input script [{t_ms,key,action},...]
+ *                        (Arlecchino difftest format, docs/difftest_format.md);
+ *                        with --ticks — events by tick [{tick,key,action},...]
+ *    --ticks N           deterministic mode: run exactly N ticks
+ *                        (frame boundaries, see org.microemu.TickInput) and exit;
+ *                        input is delivered synchronously on its tick, a frame
+ *                        (with --frames-dir) is taken on every tick,
+ *                        --frames/--period-ms/--boot-wait-ms have no effect
+ *    --tick-timeout-ms MS  watchdog for --ticks mode: exit with code 4 if
+ *                        no new tick arrived within MS ms of wall time (30000)
+ *    --rms DIR           file-backed RMS FLAT in DIR (extension of upstream
+ *                        `--rms (file|memory)`: a path value = the directory)
  *
- *  Плюс автостарт: если включён захват и последний аргумент — существующий
- *  .jar/.jad, MIDlet-1 достаётся из манифеста/джада и аргумент переписывается
- *  в class-name-инвокацию (--appclasspath jar [--propertiesjad jad] Class) —
- *  headless-Launcher без этого не репейнтится и кадры остаются пустыми.
+ *  Plus autostart: if capture is on and the last argument is an existing
+ *  .jar/.jad, MIDlet-1 is taken from the manifest/jad and the argument is rewritten
+ *  into a class-name invocation (--appclasspath jar [--propertiesjad jad] Class) —
+ *  without this the headless Launcher never repaints and the frames stay blank.
  */
 package org.microemu.app.headless;
 
@@ -53,17 +53,17 @@ public class CaptureOptions {
 
 	public File inputsFile;
 
-	/** Режим тиков: сколько тиков прогнать (0 = обычный режим по часам стены). */
+	/** Tick mode: how many ticks to run (0 = the normal wall-clock mode). */
 	public int ticks = 0;
 
 	public int tickTimeoutMs = 30000;
 
 	public File rmsDir;
 
-	/** Последняя цель запуска (jar/jad/класс) — попадает в index.json. */
+	/** The last launch target (jar/jad/class) — goes into index.json. */
 	public String target = "";
 
-	/** Остаток аргументов — передаётся в Common.initParams как есть. */
+	/** The remaining arguments — passed to Common.initParams as is. */
 	public List<String> runtimeArgs = new ArrayList<String>();
 
 	public boolean enabled() {
@@ -141,7 +141,7 @@ public class CaptureOptions {
 		}
 	}
 
-	// ─────────────────────── автостарт по MIDlet-1 ───────────────────────────
+	// ─────────────────────── autostart via MIDlet-1 ──────────────────────────
 	private void rewriteAutoStart() {
 		if (runtimeArgs.isEmpty()) {
 			return;
@@ -149,11 +149,11 @@ public class CaptureOptions {
 		String last = (String) runtimeArgs.get(runtimeArgs.size() - 1);
 		String lower = last.toLowerCase();
 		if (!lower.endsWith(".jar") && !lower.endsWith(".jad")) {
-			return; // уже класс — Common сам инстанцирует и стартует
+			return; // already a class — Common instantiates and starts it itself
 		}
 		File f = new File(last);
 		if (!f.isFile()) {
-			return; // Common выдаст свою ошибку «не найден»
+			return; // Common will report its own "not found" error
 		}
 		String cls = null;
 		File jar = f;
@@ -202,7 +202,7 @@ public class CaptureOptions {
 		runtimeArgs.add(cls);
 	}
 
-	/** 'Имя, /icon.png, the.Class' -> 'the.Class' (или null). */
+	/** 'Name, /icon.png, the.Class' -> 'the.Class' (or null). */
 	static String midlet1Class(String entry) {
 		if (entry == null) {
 			return null;
@@ -214,7 +214,7 @@ public class CaptureOptions {
 		return parts[2].trim();
 	}
 
-	/** Минимальный парсер .jad/манифеста: 'Key: value' + строки-продолжения. */
+	/** A minimal .jad/manifest parser: 'Key: value' + continuation lines. */
 	static Map<String, String> foldManifest(File f) throws Exception {
 		Map<String, String> attrs = new HashMap<String, String>();
 		BufferedReader r = new BufferedReader(

@@ -431,10 +431,10 @@ public class J2SEDeviceDisplay implements DeviceDisplayImpl
 	}
 
     public void flushGraphics(Image gameCanvasImage, int x, int y, int width, int height) {
-        // Форк arlecchino-midp-rt: вместо жёсткого каста к SwingDisplayComponent —
-        // общий интерфейс J2SEGraphicsSurfaceDisplayComponent (Swing + headless NoUi);
-        // upstream-каст в headless молча ронял поток игры ClassCastException'ом,
-        // и кадры GameCanvas-игр не доходили до listener'а
+        // arlecchino-midp-rt fork: instead of a hard cast to SwingDisplayComponent —
+        // the common interface J2SEGraphicsSurfaceDisplayComponent (Swing + headless NoUi);
+        // in headless the upstream cast silently killed the game thread with a ClassCastException,
+        // and the frames of GameCanvas games never reached the listener
         if (gameCanvasImage != null) {
             J2SEGraphicsSurfaceDisplayComponent displayComponent =
                     (J2SEGraphicsSurfaceDisplayComponent) context.getDisplayComponent();
@@ -444,11 +444,11 @@ public class J2SEDeviceDisplay implements DeviceDisplayImpl
             }
             if (surface != null) {
                 synchronized (surface) {
-                    // Форк arlecchino-midp-rt: flushGraphics — тоже граница
-                    // кадра/тика (у GameCanvas-игр кадры идут не через paint()):
-                    // "F n" в трассу и синхронная доставка событий тика
-                    // (headless --ticks). Под замком поверхности — тот же порядок
-                    // замков, что у paint() (поверхность, затем TickInput)
+                    // arlecchino-midp-rt fork: flushGraphics is also a frame/tick
+                    // boundary (GameCanvas games deliver frames not through paint()):
+                    // "F n" into the trace and synchronous delivery of the tick's events
+                    // (headless --ticks). Under the surface lock — the same lock
+                    // order as in paint() (the surface, then TickInput)
                     org.microemu.TickInput.boundary();
                     surface.getGraphics().drawImage(
                             ((J2SEMutableImage) gameCanvasImage).getImage(), 

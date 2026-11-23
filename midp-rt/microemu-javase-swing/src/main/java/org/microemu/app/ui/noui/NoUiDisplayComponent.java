@@ -37,9 +37,9 @@ import org.microemu.device.j2se.J2SEDeviceDisplay;
 import org.microemu.device.j2se.J2SEGraphicsSurface;
 import org.microemu.device.j2se.J2SEGraphicsSurfaceDisplayComponent;
 
-// Форк arlecchino-midp-rt: реализует J2SEGraphicsSurfaceDisplayComponent,
-// чтобы GameCanvas.flushGraphics работал и в headless-режиме (upstream кастовал
-// DisplayComponent к SwingDisplayComponent -> ClassCastException в потоке игры)
+// arlecchino-midp-rt fork: implements J2SEGraphicsSurfaceDisplayComponent
+// so that GameCanvas.flushGraphics also works in headless mode (upstream cast
+// DisplayComponent to SwingDisplayComponent -> ClassCastException in the game thread)
 public class NoUiDisplayComponent implements J2SEGraphicsSurfaceDisplayComponent {
 
 	private J2SEGraphicsSurface graphicsSurface;
@@ -88,9 +88,9 @@ public class NoUiDisplayComponent implements J2SEGraphicsSurfaceDisplayComponent
 		}	
 	}
 
-	// Форк arlecchino-midp-rt: ленивое создание поверхности вынесено из
-	// repaintRequest, чтобы GameCanvas.flushGraphics (через
-	// J2SEDeviceDisplay.flushGraphics) работал и до первого repaintRequest
+	// arlecchino-midp-rt fork: lazy creation of the surface is moved out of
+	// repaintRequest so that GameCanvas.flushGraphics (via
+	// J2SEDeviceDisplay.flushGraphics) works even before the first repaintRequest
 	public J2SEGraphicsSurface getGraphicsSurface() {
 		if (graphicsSurface == null) {
 			Device device = DeviceFactory.getDevice();

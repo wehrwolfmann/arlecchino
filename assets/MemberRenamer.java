@@ -95,7 +95,7 @@ public final class MemberRenamer {
     // we LOCK exactly those and nothing more.
     ClassLoader resolver = MemberRenamer.class.getClassLoader();
 
-    // OPT-IN package flattening (Stage Э9): when on, every in-jar type is moved into
+    // OPT-IN package flattening (Stage E9): when on, every in-jar type is moved into
     // the DEFAULT (unnamed) package so a named-package class can name what used to be a
     // default-package type.  Off by default — the 5th argv "flatten" turns it on.
     boolean flattenPackages = false;
@@ -300,7 +300,7 @@ public final class MemberRenamer {
     // Well-known MIDP/CLDC + java.* callback signatures (name+full-descriptor) that an
     // in-jar class may override.  OFFLINE FALLBACK ONLY: used solely when an external
     // supertype cannot be resolved via reflection (i.e. no MIDP/CLDC stub on the
-    // resolver classpath).  Since Stage Э8 `arlecchino setup` GENERATES a clean-room
+    // resolver classpath).  Since Stage E8 `arlecchino setup` GENERATES a clean-room
     // MIDP 2.0/CLDC 1.1 stub and `installResolver` always puts it on the classpath,
     // step 1 below normally locks these PRECISELY and this list is never consulted; it
     // exists only to keep dispatch safe when the stub couldn't be built (no javac).
@@ -341,7 +341,7 @@ public final class MemberRenamer {
         }
         // 2) OFFLINE fallback ONLY for unresolvable externals: lock just the well-known
         //    callback signatures (so dispatch to a framework we can't see isn't broken).
-        //    With the Stage Э8 generated MIDP/CLDC stub on the resolver classpath this
+        //    With the Stage E8 generated MIDP/CLDC stub on the resolver classpath this
         //    branch is normally dead (step 1 resolved javax.microedition.* precisely);
         //    it triggers only when no stub could be built.  We do NOT blanket-lock every
         //    method — that would prevent fixing real return-type collisions (e.g.
@@ -855,7 +855,7 @@ public final class MemberRenamer {
         return s.length() >= 8 ? s.substring(0, 8) : ("00000000" + s).substring(s.length());
     }
 
-    // ---- plan TYPE flatten (Stage Э9, OPT-IN) ---------------------------------
+    // ---- plan TYPE flatten (Stage E9, OPT-IN) ---------------------------------
     //
     // The renamer fixes member-level source-illegalities, but one class of error is
     // PACKAGE-level: a NAMED-package class (e.g. `Container.GameMIDlet`) that references

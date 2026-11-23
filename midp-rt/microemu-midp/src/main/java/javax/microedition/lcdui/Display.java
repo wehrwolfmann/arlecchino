@@ -232,10 +232,10 @@ public class Display {
 			}));
 		}
 
-		// Форк arlecchino-midp-rt: во время доставки событий тика (TickInput,
-		// headless --ticks) событие выполняется сразу в текущем потоке, а не
-		// встаёт в очередь EventDispatcher — иначе момент, когда игра его
-		// увидит, зависит от планировщика
+		// arlecchino-midp-rt fork: while tick events are being delivered (TickInput,
+		// headless --ticks) the event runs immediately in the current thread instead of
+		// being queued in EventDispatcher — otherwise the moment the game
+		// sees it depends on the scheduler
 		private void dispatch(EventDispatcher.Event e) {
 			if (TickInput.isDelivering()) {
 				e.run();
@@ -345,8 +345,8 @@ public class Display {
 		public void paint(Graphics g) {
 			// TODO consider removal of DisplayAccess::paint(..)
 			if (current != null) {
-				// Форк arlecchino-midp-rt: граница тика — "F n" в трассу и
-				// (headless --ticks) синхронная доставка событий тика n
+				// arlecchino-midp-rt fork: tick boundary — "F n" into the trace and
+				// (headless --ticks) synchronous delivery of tick n's events
 				TickInput.boundary();
 				try {
 					current.paint(g);
@@ -643,9 +643,9 @@ public class Display {
 	}
 
 	void repaint(Displayable d, int x, int y, int width, int height) {
-		// Форк arlecchino-midp-rt: repaint() из обработчика события тика не
-		// ставится в очередь — кадр этого тика рисуется сразу после доставки,
-		// а лишний кадр в очереди гонялся бы с потоком игры
+		// arlecchino-midp-rt fork: repaint() from a tick event handler is not
+		// queued — this tick's frame is drawn right after delivery,
+		// and an extra frame in the queue would race with the game thread
 		if (TickInput.isDelivering()) {
 			return;
 		}

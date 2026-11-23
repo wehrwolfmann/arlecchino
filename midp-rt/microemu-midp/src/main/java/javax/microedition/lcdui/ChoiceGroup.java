@@ -103,10 +103,10 @@ public class ChoiceGroup extends Item implements Choice
         -126 
     };
 
-	// Форк arlecchino-midp-rt: служебные картинки рантайма создаются мимо
-	// Image.createImage, чтобы не попадать в трассу midprt.trace как "I n":
-	// класс инициализируется в произвольный момент (из любого потока), и их
-	// номера гонялись с картинками игры — трасса двух прогонов расходилась
+	// arlecchino-midp-rt fork: the runtime's internal images are created bypassing
+	// Image.createImage so that they do not get into the midprt.trace as "I n":
+	// the class is initialised at an arbitrary moment (from any thread), and their
+	// numbers raced with the game's images — the traces of two runs diverged
 	private static final Image imgMultiOff = internalImage(multiOff);
 	private static final Image imgMultiOn = internalImage(multiOn);
 	private static final Image imgRadioOff = internalImage(radioOff);

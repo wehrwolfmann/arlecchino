@@ -21,9 +21,9 @@
  *  See the LGPL or the AL for the specific language governing permissions and
  *  limitations.
  *
- *  Файл из upstream MicroEmulator (barteo/microemu) шёл без лицензионного
- *  header; header добавлен в форке arlecchino-midp-rt (2026) согласно
- *  лицензированию upstream (COPYING).
+ *  This file came from upstream MicroEmulator (barteo/microemu) without a license
+ *  header; the header was added in the arlecchino-midp-rt fork (2026) in line with
+ *  the upstream licensing (COPYING).
  */
 package org.microemu.util;
 

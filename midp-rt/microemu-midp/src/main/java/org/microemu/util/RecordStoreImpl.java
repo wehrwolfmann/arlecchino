@@ -232,11 +232,11 @@ public class RecordStoreImpl extends RecordStore
 
 
 	/**
-	 * Форк arlecchino-midp-rt: число записей для служебных нужд рантайма
-	 * (перечисление записей, сохранение хранилища на диск) — мимо трассы
-	 * midprt.trace. В трассу идёт только getNumRecords, вызванный игрой:
-	 * иначе каждое сохранение и каждый enumerateRecords дописывали в неё
-	 * строки "RecordStore.getNumRecords", которых игра не вызывала.
+	 * arlecchino-midp-rt fork: the number of records for the runtime's internal needs
+	 * (enumerating records, saving the store to disk) — bypassing the
+	 * midprt.trace. Only getNumRecords called by the game goes into the trace:
+	 * otherwise every save and every enumerateRecords would append
+	 * "RecordStore.getNumRecords" lines that the game never called.
 	 */
 	int numRecordsInternal()
 			throws RecordStoreNotOpenException

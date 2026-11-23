@@ -1,11 +1,11 @@
 /*
- *  arlecchino-midp-rt: общая база реальных Player'ов JSR-135 (MMAPI):
- *  state-machine UNREALIZED -> REALIZED -> PREFETCHED -> STARTED -> CLOSED,
- *  список PlayerListener'ов с асинхронной доставкой событий, счётчик loop,
- *  VolumeControl (уровень 0..100 + mute) с событием VOLUME_CHANGED.
+ *  arlecchino-midp-rt: the common base of real JSR-135 (MMAPI) Players:
+ *  state machine UNREALIZED -> REALIZED -> PREFETCHED -> STARTED -> CLOSED,
+ *  a list of PlayerListeners with asynchronous event delivery, a loop counter,
+ *  VolumeControl (level 0..100 + mute) with the VOLUME_CHANGED event.
  *
- *  Написан по публичной спецификации JSR-135 для форка arlecchino-midp-rt
- *  (2026), LGPL 2.1 — см. LICENSE/NOTICE в корне репозитория.
+ *  Written from the public JSR-135 specification for the arlecchino-midp-rt fork
+ *  (2026), LGPL 2.1 — see LICENSE/NOTICE at the repository root.
  */
 package org.microemu.media;
 
@@ -30,10 +30,10 @@ public abstract class AbstractPlayer implements Player {
 
 	private final Vector listeners = new Vector();
 
-	/** Счётчик повторов по семантике MMAPI: 1 = один раз, -1 = бесконечно. */
+	/** Repeat counter with MMAPI semantics: 1 = once, -1 = forever. */
 	protected int loopCount = 1;
 
-	/** Громкость 0..100 (применяется наследником в applyVolume). */
+	/** Volume 0..100 (applied by the subclass in applyVolume). */
 	protected int volumeLevel = 100;
 
 	protected boolean volumeMuted = false;
@@ -154,8 +154,8 @@ public abstract class AbstractPlayer implements Player {
 		return state;
 	}
 
-	/** Перевод STARTED -> PREFETCHED по естественному концу носителя
-	 * (вызывается наследником из callback'а аудиосистемы). */
+	/** Transition STARTED -> PREFETCHED at the natural end of the media
+	 * (called by the subclass from the audio system's callback). */
 	protected synchronized void mediaEnded() {
 		if (state == STARTED) {
 			state = PREFETCHED;
@@ -176,12 +176,12 @@ public abstract class AbstractPlayer implements Player {
 		}
 	}
 
-	// ------------------------------------------------- хуки реализаций носителя
+	// ------------------------------------------------- media implementation hooks
 
-	/** UNREALIZED -> REALIZED: разбор данных носителя. */
+	/** UNREALIZED -> REALIZED: parsing the media data. */
 	protected abstract void doRealize() throws MediaException;
 
-	/** REALIZED -> PREFETCHED: захват аудиоустройства. */
+	/** REALIZED -> PREFETCHED: acquiring the audio device. */
 	protected abstract void doPrefetch() throws MediaException;
 
 	/** PREFETCHED -> STARTED. */
@@ -190,21 +190,21 @@ public abstract class AbstractPlayer implements Player {
 	/** STARTED -> PREFETCHED. */
 	protected abstract void doStop() throws MediaException;
 
-	/** PREFETCHED -> REALIZED: освобождение аудиоустройства. */
+	/** PREFETCHED -> REALIZED: releasing the audio device. */
 	protected abstract void doDeallocate();
 
-	/** -> CLOSED: окончательное освобождение ресурсов. */
+	/** -> CLOSED: final release of resources. */
 	protected abstract void doClose();
 
-	/** Применить volumeLevel/volumeMuted к работающему носителю
-	 * (вызывается под монитором плеера). */
+	/** Apply volumeLevel/volumeMuted to the running media
+	 * (called under the player's monitor). */
 	protected abstract void applyVolume();
 
-	// ------------------------------------------------------------------- общее
+	// ------------------------------------------------------------------- common
 
 	public void setTimeBase(TimeBase master) throws MediaException {
 		checkNotStartedNotClosed();
-		// поддерживается только системная TimeBase
+		// only the system TimeBase is supported
 	}
 
 	public TimeBase getTimeBase() {
@@ -270,10 +270,10 @@ public abstract class AbstractPlayer implements Player {
 		return new Control[] { volumeControl };
 	}
 
-	// ----------------------------------------------------------------- события
+	// ----------------------------------------------------------------- events
 
-	/** Асинхронная доставка события всем слушателям (фоновая нить,
-	 * как требует спецификация: callback не из нити вызвавшего метода). */
+	/** Asynchronous delivery of an event to all listeners (a background thread,
+	 * as the specification requires: the callback is not on the caller's thread). */
 	protected void postEvent(final String event, final Object eventData) {
 		if (listeners.isEmpty()) {
 			return;

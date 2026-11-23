@@ -1,13 +1,13 @@
 /*
- *  arlecchino-midp-rt: реальный MIDI-Player JSR-135 поверх javax.sound.midi
- *  (Sequencer -> масштабирующий Receiver -> Synthesizer). Громкость
- *  VolumeControl реализована перехватом CC7 (channel volume): значения из
- *  самого файла запоминаются как база и умножаются на level/100, поэтому
- *  setLevel работает и когда секвенция сама шлёт CC7 (в т.ч. на каждом
- *  повторе при setLoopCount(-1)).
+ *  arlecchino-midp-rt: a real JSR-135 MIDI Player on top of javax.sound.midi
+ *  (Sequencer -> scaling Receiver -> Synthesizer). VolumeControl
+ *  volume is implemented by intercepting CC7 (channel volume): the values from
+ *  the file itself are remembered as the base and multiplied by level/100, so
+ *  setLevel works even when the sequence sends CC7 itself (including on every
+ *  repeat with setLoopCount(-1)).
  *
- *  Написан по публичной спецификации JSR-135 для форка arlecchino-midp-rt
- *  (2026), LGPL 2.1 — см. LICENSE/NOTICE в корне репозитория.
+ *  Written from the public JSR-135 specification for the arlecchino-midp-rt fork
+ *  (2026), LGPL 2.1 — see LICENSE/NOTICE at the repository root.
  */
 package org.microemu.media;
 
@@ -31,12 +31,12 @@ import org.microemu.log.Logger;
 
 public class MidiPlayer extends AbstractPlayer {
 
-	/** Meta-событие 0x2F = End Of Track. */
+	/** Meta event 0x2F = End Of Track. */
 	private static final int META_END_OF_TRACK = 0x2F;
 
 	private static final int CC_CHANNEL_VOLUME = 7;
 
-	/** Громкость канала по умолчанию (General MIDI). */
+	/** Default channel volume (General MIDI). */
 	private static final int DEFAULT_CHANNEL_VOLUME = 100;
 
 	private final byte[] data;
@@ -95,10 +95,10 @@ public class MidiPlayer extends AbstractPlayer {
 		if (loopCount < 0) {
 			sequencer.setLoopCount(Sequencer.LOOP_CONTINUOUSLY);
 		} else {
-			// MMAPI: count = число воспроизведений; Sequencer: число ПОВТОРОВ
+			// MMAPI: count = number of plays; Sequencer: number of REPEATS
 			sequencer.setLoopCount(loopCount - 1);
 		}
-		// после END_OF_MEDIA позиция остаётся в конце — начать заново
+		// after END_OF_MEDIA the position stays at the end — start over
 		if (sequencer.getMicrosecondPosition() >= sequencer.getMicrosecondLength()) {
 			sequencer.setMicrosecondPosition(0);
 		}
@@ -178,9 +178,9 @@ public class MidiPlayer extends AbstractPlayer {
 	}
 
 	/**
-	 * Receiver-обёртка между Sequencer и Synthesizer: масштабирует громкость
-	 * каналов (CC7) множителем level/100 и помнит «базовую» громкость каждого
-	 * канала из самой секвенции, чтобы пере-применять её при setLevel/setMute.
+	 * A Receiver wrapper between the Sequencer and the Synthesizer: scales channel
+	 * volume (CC7) by the level/100 multiplier and remembers the "base" volume of each
+	 * channel from the sequence itself, to re-apply it on setLevel/setMute.
 	 */
 	private static final class VolumeScalingReceiver implements Receiver {
 
@@ -236,7 +236,7 @@ public class MidiPlayer extends AbstractPlayer {
 		}
 
 		public void close() {
-			// синтезатор закрывает MidiPlayer.releaseDevices
+			// the synthesizer is closed by MidiPlayer.releaseDevices
 		}
 	}
 }

@@ -303,8 +303,8 @@ public class Common implements MicroEmulator, CommonInterface {
                         }
                         Logger.debug("AutoTests start class", midletClassName);
                         MIDlet m = loadMidlet(midletClass, MIDletBridge.getMIDletAccess());
-                        // Форк arlecchino-midp-rt: loadMidlet возвращает null при
-                        // ошибке создания MIDlet — не падать с NPE
+                        // arlecchino-midp-rt fork: loadMidlet returns null when
+                        // creating the MIDlet fails — do not crash with an NPE
                         if (m == null) {
                             break;
                         }
@@ -771,10 +771,10 @@ public class Common implements MicroEmulator, CommonInterface {
     }
 
     /**
-     * Форк arlecchino-midp-rt: размер экрана WxH, как у телефона. Полноэкранный
-     * Canvas получает весь экран, обычный — экран без полосы софт-клавиш снизу
-     * (они переезжают к нижнему краю). Тот же расчёт, что у Swing-окна при
-     * изменении размера (Main.setDeviceSize), теперь общий для --resizableDevice.
+     * arlecchino-midp-rt fork: screen size WxH, as on a phone. A fullscreen
+     * Canvas gets the whole screen, a normal one gets the screen minus the soft-key bar at the bottom
+     * (the soft keys move to the bottom edge). The same computation as the Swing window does on
+     * resize (Main.setDeviceSize), now shared with --resizableDevice.
      */
     public static void setDisplaySize(DeviceDisplayImpl deviceDisplay, int width, int height) {
         int menuh = 0;
@@ -783,8 +783,8 @@ public class Common implements MicroEmulator, CommonInterface {
             SoftButton button = (SoftButton) en.nextElement();
             Rectangle paintable = button.getPaintable();
             paintable.y = height - paintable.height;
-            // в списке и иконки прокрутки (12 px), и софт-клавиши (16 px):
-            // берём самую высокую, а не последнюю по порядку device.xml
+            // a list has both scroll icons (12 px) and soft keys (16 px):
+            // take the tallest one, not the last one in device.xml order
             menuh = Math.max(menuh, paintable.height);
         }
         deviceDisplay.setDisplayPaintable(new Rectangle(0, 0, width, height - menuh));
@@ -893,8 +893,8 @@ public class Common implements MicroEmulator, CommonInterface {
                 } else if (arg.equals("--enhanceCatchBlock")) {
                     MIDletClassLoader.enhanceCatchBlock = true;
                 } else if (arg.equals("--no-instrument")) {
-                    // Форк arlecchino-midp-rt: явное отключение ASM-инструментации классов MIDlet
-                    // (теряется редирект System.out/err и перехват исключений)
+                    // arlecchino-midp-rt fork: explicitly disable ASM instrumentation of MIDlet classes
+                    // (System.out/err redirection and exception interception are lost)
                     MIDletClassLoader.instrumentMIDletClasses = false;
                 } else if (arg.equals("--quiet")) {
                     StdOutAppender.enabled = false;
@@ -922,9 +922,9 @@ public class Common implements MicroEmulator, CommonInterface {
                 setDevice(DeviceImpl.create(emulatorContext, classLoader, deviceDescriptorLocation, defaultDeviceClass));
                 DeviceDisplayImpl deviceDisplay = (DeviceDisplayImpl) DeviceFactory.getDevice().getDeviceDisplay();
                 if (overrideDeviceWidth != -1 && overrideDeviceHeight != -1) {
-                    // Форк arlecchino-midp-rt: upstream задавал здесь только полный
-                    // прямоугольник экрана, а область Canvas (paintable) оставалась
-                    // 176x176 из resizable/device.xml — игра видела 176x176 при кадре WxH
+                    // arlecchino-midp-rt fork: upstream set only the full screen
+                    // rectangle here, while the Canvas (paintable) area stayed at
+                    // 176x176 from resizable/device.xml — the game saw 176x176 with a WxH frame
                     setDisplaySize(deviceDisplay, overrideDeviceWidth, overrideDeviceHeight);
                 }
             } catch (IOException ex) {
@@ -1096,8 +1096,8 @@ public class Common implements MicroEmulator, CommonInterface {
                 }
             } else {
                 midlet = loadMidlet(midletClass, MIDletBridge.getMIDletAccess());
-                // Форк arlecchino-midp-rt: loadMidlet возвращает null при ошибке
-                // создания MIDlet (ошибка уже показана) — не падать с NPE
+                // arlecchino-midp-rt fork: loadMidlet returns null when creating
+                // the MIDlet fails (the error is already shown) — do not crash with an NPE
                 if (startMidlet && midlet != null) {
                     try {
                         MIDletBridge.getMIDletAccess(midlet).startApp();
@@ -1116,8 +1116,8 @@ public class Common implements MicroEmulator, CommonInterface {
     
     public MIDlet initMIDlet(boolean startMidlet, MIDletEntry entry) {
         MIDlet midlet = loadMidlet(entry.getMIDletClass(), MIDletBridge.getMIDletAccess());
-        // Форк arlecchino-midp-rt: loadMidlet возвращает null при ошибке
-        // создания MIDlet (ошибка уже показана) — не падать с NPE
+        // arlecchino-midp-rt fork: loadMidlet returns null when creating
+        // the MIDlet fails (the error is already shown) — do not crash with an NPE
         if (startMidlet && midlet != null) {
             try {
                 MIDletBridge.getMIDletAccess(midlet).startApp();

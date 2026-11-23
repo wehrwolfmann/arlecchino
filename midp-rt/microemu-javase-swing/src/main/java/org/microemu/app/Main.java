@@ -1072,11 +1072,11 @@ public class Main extends JFrame {
 		}
 		app.common.initMIDlet(true);
 
-		// Форк arlecchino-midp-rt: мост кадров в Rust-рендер (allods-shell).
-		// Активен только при -Dallods.shell.socket=PATH / env ALLODS_SHELL_SOCKET;
-		// иначе no-op (обычное окно midp-rt не меняется). В оконном режиме
-		// listener поверхности используется лишь zoom-окном/GIF-рекордером
-		// (по умолчанию выключены), поэтому основное окно не страдает.
+		// arlecchino-midp-rt fork: frame bridge to the Rust renderer (allods-shell).
+		// Active only with -Dallods.shell.socket=PATH / env ALLODS_SHELL_SOCKET;
+		// otherwise a no-op (the normal midp-rt window is unchanged). In window mode
+		// the surface listener is used only by the zoom window/GIF recorder
+		// (both off by default), so the main window is not affected.
 		org.microemu.app.shell.ShellFrameBridge.attachIfEnabled(app.emulatorContext.getDisplayComponent());
 
 		app.addComponentListener(app.componentListener);

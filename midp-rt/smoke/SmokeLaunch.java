@@ -1,13 +1,13 @@
 /*
- *  arlecchino-midp-rt smoke-launcher: headless-запуск MIDlet + дамп кадра в PNG.
+ *  arlecchino-midp-rt smoke launcher: headless MIDlet launch + a frame dump to PNG.
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория. База форка — MicroEmulator (barteo/microemu).
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root. The fork is based on MicroEmulator (barteo/microemu).
  *
- *  Использование: java SmokeLaunch <out.png> <game.jar | MIDletClass> [аргументы Common...]
+ *  Usage: java SmokeLaunch <out.png> <game.jar | MIDletClass> [Common arguments...]
  *
- *  ASM-инструментация классов MIDlet ВКЛЮЧЕНА (с ASM 9 работает и на современном
- *  байткоде, major 52+); отключить можно аргументом --no-instrument.
+ *  ASM instrumentation of MIDlet classes is ON (with ASM 9 it also works on modern
+ *  bytecode, major 52+); it can be turned off with the --no-instrument argument.
  */
 
 import java.io.File;
@@ -40,8 +40,8 @@ public class SmokeLaunch {
 	private static volatile J2SEGraphicsSurface lastSurface;
 
 	public static void main(String[] args) {
-		// Любой сбой -> немедленный exit: иначе non-daemon потоки MIDlet'а
-		// оставляют JVM висеть после исключения в main
+		// Any failure -> immediate exit: otherwise the MIDlet's non-daemon threads
+		// leave the JVM hanging after an exception in main
 		try {
 			run(args);
 		} catch (Throwable e) {
@@ -111,7 +111,7 @@ public class SmokeLaunch {
 		emulator.initParams(params, defaultDevice, J2SEDevice.class);
 		emulator.initMIDlet(true);
 
-		// Даём MIDlet'у отработать стартовую отрисовку
+		// Let the MIDlet finish its initial drawing
 		Thread.sleep(2500);
 
 		J2SEGraphicsSurface surface = lastSurface;
