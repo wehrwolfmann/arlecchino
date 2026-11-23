@@ -317,7 +317,7 @@ fn verdicts_match_python() {
     let want = g["verdicts"].as_array().unwrap();
     assert_eq!(want.len(), got.len());
     for (w, gt) in want.iter().zip(got.iter()) {
-        assert_eq!(w, gt, "вердикт {} разошёлся", gt["name"]);
+        assert_eq!(w, gt, "verdict {} diverged", gt["name"]);
     }
 }
 
@@ -380,7 +380,7 @@ fn cross_engine_matches_python() {
     let want = g["cross_engine"].as_array().unwrap();
     assert_eq!(want.len(), got.len());
     for (w, gt) in want.iter().zip(got.iter()) {
-        assert_eq!(w, gt, "межмоторный случай {} разошёлся", gt["name"]);
+        assert_eq!(w, gt, "cross-engine case {} diverged", gt["name"]);
     }
 
     let s = run(
@@ -419,7 +419,7 @@ fn pipe_protocol_matches_python() {
         .map(|(k, v)| (k.clone(), v.as_i64().unwrap()))
         .collect();
     for (name, code) in &keys {
-        assert_eq!(dr::libretro_key(name), Some(*code), "клавиша {name}");
+        assert_eq!(dr::libretro_key(name), Some(*code), "key {name}");
     }
 
     let cmds = json!([
