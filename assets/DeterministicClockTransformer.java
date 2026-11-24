@@ -1,7 +1,7 @@
 // DeterministicClockTransformer — ASM bytecode rewriter that makes a J2ME MIDlet's
 // observable behaviour a pure function of how many times it asks the clock / RNG,
 // independent of the host's wall clock.  This is Arlecchino Stage A7 (PLAN_runtime.md,
-// "A7. Детерминизм"), path (b): instrument the MIDlet itself instead of forking the
+// "A7. Determinism"), path (b): instrument the MIDlet itself instead of forking the
 // (GPL) emulator.
 //
 // WHY

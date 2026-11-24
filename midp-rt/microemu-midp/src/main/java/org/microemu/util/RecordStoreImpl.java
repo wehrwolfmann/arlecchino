@@ -231,6 +231,24 @@ public class RecordStoreImpl extends RecordStore
 	}
 
 
+	/**
+	 * arlecchino-midp-rt fork: the number of records for the runtime's internal needs
+	 * (enumerating records, saving the store to disk) — bypassing the
+	 * midprt.trace. Only getNumRecords called by the game goes into the trace:
+	 * otherwise every save and every enumerateRecords would append
+	 * "RecordStore.getNumRecords" lines that the game never called.
+	 */
+	int numRecordsInternal()
+			throws RecordStoreNotOpenException
+	{
+		if (!open) {
+		    throw new RecordStoreNotOpenException();
+		}
+
+		return size;
+	}
+
+
     public int getSize()
 			throws RecordStoreNotOpenException
 	{

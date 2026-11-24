@@ -1,18 +1,18 @@
 /*
- *  arlecchino-midp-rt: тестовый MIDlet для smoke-теста headless-рендера
- *  (Canvas: fillRect + drawString; System.out проверяет Injected-редирект
- *  ASM-инструментации).
+ *  arlecchino-midp-rt: a test MIDlet for the headless rendering smoke test
+ *  (Canvas: fillRect + drawString; System.out checks the Injected redirect
+ *  of the ASM instrumentation).
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория. База форка — MicroEmulator (barteo/microemu).
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root. The fork is based on MicroEmulator (barteo/microemu).
  */
 import javax.microedition.midlet.MIDlet;
 import javax.microedition.lcdui.*;
 
 public class TestMidlet extends MIDlet {
     static class C extends Canvas {
-        // последний keyCode — фикстура проверки --inputs (нижняя полоса
-        // меняет цвет от нажатой клавиши: кадр после ввода != кадру до)
+        // the last keyCode — a fixture for checking --inputs (the bottom bar
+        // changes colour by the pressed key: the frame after input != the frame before)
         private int lastKey = 0;
 
         protected void paint(Graphics g) {
@@ -36,7 +36,7 @@ public class TestMidlet extends MIDlet {
         C c = new C();
         Display.getDisplay(this).setCurrent(c);
         c.repaint();
-        // Без авто-destroy: кадр дампит SmokeLaunch и сам завершает процесс
+        // No auto-destroy: SmokeLaunch dumps the frame and ends the process itself
     }
     protected void pauseApp() {}
     protected void destroyApp(boolean u) {}

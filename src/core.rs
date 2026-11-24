@@ -85,10 +85,18 @@ pub fn run_decompiler(eng: &Engine, jar: &Path, outdir: &Path, root: &Path) -> P
     src
 }
 
+/// Every `.java` under `srcdir` that declares a type, keyed by its relative path.
+///
+/// A file with no type declaration is left out: Jode, for one, writes an EMPTY
+/// `X.java` for a class it fails on, and an empty file compiles with zero errors, so
+/// it would otherwise win the per-class merge as a "clean" variant.
 pub fn collect_java(srcdir: &Path) -> BTreeMap<String, PathBuf> {
     let mut out = BTreeMap::new();
     for p in util::rglob_ext(srcdir, "java") {
         if p.file_name().map(|n| n == "_sources.txt").unwrap_or(false) {
+            continue;
+        }
+        if !util::read_text_lossy(&p).map(|t| TOP_TYPE_RE.is_match(&t)).unwrap_or(false) {
             continue;
         }
         if let Ok(rel) = p.strip_prefix(srcdir) {
@@ -145,7 +153,7 @@ pub fn compile_dir(srcdir: &Path, classpath: Option<&str>) -> (i64, BTreeMap<Str
         cmd.push(cp.to_string());
     }
     cmd.push(format!("@{}", listf.to_string_lossy()));
-    // javac в srcdir: свой @argfile он положит туда же, а не в чужой каталог.
+    // javac in srcdir: it puts its own @argfile there too, not into someone else's directory.
     let r = util::run_capture_in(&cmd, None, Some(srcdir));
     let log = r.stderr;
     let per = count_errors_per(&log, srcdir);

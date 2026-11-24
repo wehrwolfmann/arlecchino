@@ -1,67 +1,67 @@
-//! Семантическая round-trip-сверка (этап Э3) — слой ВЕРИФИКАЦИИ / ФЛАГОВ.
+//! Semantic round-trip check (stage E3) — the VERIFICATION / FLAGGING layer.
 //!
-//! Порт `arlecchino/semdiff.py`.
+//! Port of `arlecchino/semdiff.py`.
 //!
-//! Обычная round-trip-проверка (`roundtrip`) доказывает только ПОКРЫТИЕ (каждый
-//! исходный класс дал скомпилированный) и ГРУБЫЕ СЧЁТЧИКИ (число членов/методов
-//! по `javap -p`). Автофикс может изменить СЕМАНТИКУ, не тронув эти счётчики —
-//! прежде всего три автофикса, переписывающие конструкции рядом с поведением:
+//! The ordinary round-trip check (`roundtrip`) proves only COVERAGE (every
+//! source class produced a compiled one) and COARSE COUNTS (number of members/methods
+//! per `javap -p`). An autofix can change SEMANTICS without touching these counts —
+//! above all the three autofixes that rewrite constructs close to behaviour:
 //!
-//!   * `scratch_temp_dead_array_type` — расширяет объявление локальной до `Object`
-//!     (может перевернуть тип элемента `new int[]` против `new char[]`),
-//!   * `fold_interface_static_init`   — переносит блок `static {}` в инициализаторы
-//!     полей (переупорядочивает/перекодирует `<clinit>`),
-//!   * `const_interface_to_class`     — превращает `interface` в `class`
-//!     (перещёлкивает места вызова с `invokeinterface` на `invokevirtual`).
+//!   * `scratch_temp_dead_array_type` — widens a local's declaration to `Object`
+//!     (may flip the element type of `new int[]` versus `new char[]`),
+//!   * `fold_interface_static_init`   — moves a `static {}` block into field
+//!     initialisers (reorders/re-encodes `<clinit>`),
+//!   * `const_interface_to_class`     — turns an `interface` into a `class`
+//!     (flips call sites from `invokeinterface` to `invokevirtual`).
 //!
-//! Модуль дизассемблирует поMETОДНО исходный `.class` (из переименованного jar —
-//! канонический API, которым и так пользуется весь конвейер) и пересобранный
-//! `.class`, НОРМАЛИЗУЕТ косметические различия, законно возникающие при
-//! round-trip декомпилятор+компилятор, и ПОМЕЧАЕТ методы, чьё нормализованное
-//! множество символьных ссылок различается по существу. Правила слияния он не
-//! меняет никогда.
+//! The module disassembles, METHOD BY METHOD, the original `.class` (from the renamed jar —
+//! the canonical API the whole pipeline uses anyway) and the rebuilt
+//! `.class`, NORMALISES cosmetic differences that legitimately arise in a
+//! decompiler+compiler round trip, and FLAGS methods whose normalised
+//! set of symbolic references differs in substance. It never changes the
+//! merge rules.
 //!
-//! Почему МНОЖЕСТВО символьных ссылок, а не точный поток опкодов?
-//! -------------------------------------------------------------
-//! Строгое сравнение потока `javap -c` слишком жёстко: javac перекодирует
-//! декомпилированный исходник с другой полярностью ветвлений
-//! (`if_icmpge` ↔ `if_icmplt; return`), другими номерами слотов локальных,
-//! другими идиомами `dup`/`x++` и опускает перезагрузки — ничего из этого не
-//! меняет поведение. Калибровка на заведомо хорошем слиянии Аллодов 712→2
-//! (30+ чистых классов) показала сотни ложных построчных различий.
+//! Why a SET of symbolic references rather than the exact opcode stream?
+//! ---------------------------------------------------------------------
+//! A strict comparison of the `javap -c` stream is too rigid: javac re-encodes
+//! decompiled source with a different branch polarity
+//! (`if_icmpge` ↔ `if_icmplt; return`), different local slot numbers,
+//! different `dup`/`x++` idioms, and drops reloads — none of which
+//! changes behaviour. Calibration on the known-good Allods 712→2 merge
+//! (30+ clean classes) showed hundreds of false line-by-line differences.
 //!
-//! Устойчивый сигнал БЕЗ ложных срабатываний (откалиброван на Аллодах) — это
-//! множество различных символьных операндов каждого метода, с нормализацией:
+//! The stable signal WITHOUT false positives (calibrated on Allods) is the
+//! set of distinct symbolic operands of each method, with normalisation:
 //!
-//!   N1. Сравниваем метод к методу по нормализованной сигнатуре (модификаторы
-//!       доступа выброшены); метод, который есть только с одной стороны, помечается.
-//!   N2. Ссылки на поля/методы держим как `(вид, имя, дескриптор)`, но ВЫБРАСЫВАЕМ
-//!       класс-владелец — javac переразрешает член на тот супертип, который его
-//!       ОБЪЯВЛЯЕТ (`Field aa.H:I` против `Field j.H:I`); тот же член, косметика.
-//!   N3. Вид вызова оставляем различимым (`Method` против `InterfaceMethod`), чтобы
-//!       переворот interface→class всё ещё ловился, а владелец при этом выброшен.
-//!   N4. Сводим `StringBuffer` ↔ `StringBuilder` — декомпилятор выдаёт современный
-//!       `StringBuilder` для конкатенации `+`, которую исходный обфусцированный
-//!       байткод собирал через `StringBuffer`; поведение то же.
-//!   N5. Ловим создание массива примитивов `newarray <тип>` — ровно то, что может
-//!       изменить `scratch_temp_dead_array_type`.
-//!   N6. ИСКЛЮЧАЕМ `checkcast` / `instanceof` — декомпиляторы вставляют избыточные
-//!       приведения, которые оригинал проверял статически.
-//!   N7. ИСКЛЮЧАЕМ синтетический `getClass():Class` — javac выдаёт его как
-//!       проверку на null, которую декомпилированный исходник не воспроизводит.
-//!   N8. Примиряем переименованные члены через `mapping.txt` (обратная карта
-//!       новоеИмя→староеИмя), чтобы переименованный член не помечался как
-//!       семантическое изменение.
+//!   N1. Compare method to method by normalised signature (access modifiers
+//!       dropped); a method present on only one side is flagged.
+//!   N2. Field/method references are kept as `(kind, name, descriptor)`, but the
+//!       owner class is DROPPED — javac re-resolves a member to the supertype that
+//!       DECLARES it (`Field aa.H:I` versus `Field j.H:I`); same member, cosmetic.
+//!   N3. The call kind stays distinguishable (`Method` versus `InterfaceMethod`), so
+//!       an interface→class flip is still caught while the owner is dropped.
+//!   N4. Fold `StringBuffer` ↔ `StringBuilder` — the decompiler emits the modern
+//!       `StringBuilder` for `+` concatenation that the original obfuscated
+//!       bytecode built with `StringBuffer`; same behaviour.
+//!   N5. Catch primitive array creation `newarray <type>` — exactly what
+//!       `scratch_temp_dead_array_type` can change.
+//!   N6. EXCLUDE `checkcast` / `instanceof` — decompilers insert redundant
+//!       casts that the original checked statically.
+//!   N7. EXCLUDE the synthetic `getClass():Class` — javac emits it as a
+//!       null check that decompiled source does not reproduce.
+//!   N8. Reconcile renamed members via `mapping.txt` (the reverse map
+//!       newName→oldName), so that a renamed member is not flagged as a
+//!       semantic change.
 //!
-//! Всё деградирует мягко: нет `javap` — модуль ничего не делает (`available=false`);
-//! класс, который не пересобрался, пропускается (сообщается, а не помечается).
+//! Everything degrades gracefully: no `javap` — the module does nothing (`available=false`);
+//! a class that did not recompile is skipped (reported, not flagged).
 
 use crate::util;
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-/// Ссылка на член/тип в нормализованном виде.
+/// A member/type reference in normalised form.
 pub type Ref = (String, String, String);
 
 fn re_offset() -> Regex {
@@ -78,7 +78,7 @@ fn re_access() -> Regex {
         .unwrap()
 }
 
-/// опкоды, чей операнд называет поле/метод/тип (семантическое ядро, которое храним)
+/// opcodes whose operand names a field/method/type (the semantic core we keep)
 const REF_OPS: &[&str] = &[
     "getfield",
     "putfield",
@@ -94,18 +94,18 @@ const REF_OPS: &[&str] = &[
     "multianewarray",
 ];
 
-/// синтетическая проверка на null, которую javac выдаёт, а декомпилированный
-/// исходник не воспроизводит (N7)
+/// a synthetic null check that javac emits and decompiled
+/// source does not reproduce (N7)
 fn is_getclass(r: &Ref) -> bool {
     r.0 == "Method" && r.1 == "getClass" && r.2 == "()Ljava/lang/Class;"
 }
 
 // ───────────────────────────── mapping (N8) ─────────────────────────────────
-/// Построить {новоеИмя: староеИмя} из `mapping.txt` переименователя.
+/// Build {newName: oldName} from the renamer's `mapping.txt`.
 ///
-/// Строки выглядят как `owner.oldName desc -> newName` и могут нести хвостовую
-/// пометку `  (type-shadow)`. Ключуем ТОЛЬКО по имени (владелец при нормализации
-/// всё равно выбрасывается); коллизии при хэшированных суффиксах невероятны.
+/// Lines look like `owner.oldName desc -> newName` and may carry a trailing
+/// `  (type-shadow)` mark. We key by NAME ONLY (the owner is dropped during
+/// normalisation anyway); collisions with hashed suffixes are implausible.
 pub fn load_reverse_map(mapping: Option<&Path>) -> BTreeMap<String, String> {
     let mut rev = BTreeMap::new();
     let path = match mapping {
@@ -127,24 +127,24 @@ fn apply_rev(name: &str, rev: &BTreeMap<String, String>) -> String {
     rev.get(name).cloned().unwrap_or_else(|| name.to_string())
 }
 
-// ───────────────────────────── нормализация ──────────────────────────────────
-/// Превратить символьный операнд-комментарий `javap` (`// ...`) в нормализованный
-/// кортеж ссылки. Применяет N2 (выбросить владельца), N3 (сохранить вид),
-/// N4 (StringBuffer→StringBuilder), N8 (обратное переименование).
+// ───────────────────────────── normalisation ─────────────────────────────────
+/// Turn a `javap` symbolic operand comment (`// ...`) into a normalised
+/// reference tuple. Applies N2 (drop the owner), N3 (keep the kind),
+/// N4 (StringBuffer→StringBuilder), N8 (reverse renaming).
 pub fn canon_ref(comment: &str, rev: &BTreeMap<String, String>) -> Ref {
     let c = comment.trim().replace("StringBuffer", "StringBuilder");
     let re_member = Regex::new(r"^(Field|Method|InterfaceMethod)\s+(.+)$").unwrap();
     if let Some(m) = re_member.captures(&c) {
-        let kind = m[1].to_string(); // N3: Method и InterfaceMethod различимы
+        let kind = m[1].to_string(); // N3: Method and InterfaceMethod are distinguishable
         let rest = &m[2];
-        // ⭐ ПОЧИНЕН БАГ ОРИГИНАЛА: в Python `ci = rest.rfind(":")` при отсутствии
-        // двоеточия даёт −1, и дальше `member = rest[:-1]`, `desc = rest[0:]` —
-        // то есть у члена молча отгрызается последний символ, а дескриптором
-        // становится вся строка. Здесь «двоеточия нет» = дескриптор пустой.
+        // ⭐ FIXED A BUG OF THE ORIGINAL: in Python, `ci = rest.rfind(":")` with no
+        // colon gives −1, and then `member = rest[:-1]`, `desc = rest[0:]` —
+        // i.e. the member silently loses its last character, and the whole string
+        // becomes the descriptor. Here "no colon" = an empty descriptor.
         let ci = rest.rfind(':').unwrap_or(rest.len());
         let member = &rest[..ci];
         let desc = if ci < rest.len() { &rest[ci + 1..] } else { "" };
-        let name = member.rsplit('.').next().unwrap_or(member); // N2: владельца долой
+        let name = member.rsplit('.').next().unwrap_or(member); // N2: drop the owner
         return (kind, apply_rev(name, rev), desc.to_string()); // N8
     }
     let re_class = Regex::new(r"^class\s+(.+)$").unwrap();
@@ -159,21 +159,21 @@ pub fn canon_ref(comment: &str, rev: &BTreeMap<String, String>) -> Ref {
     ("?".into(), c, String::new())
 }
 
-/// Нормализовать строку сигнатуры метода в устойчивый ключ (N1, N8).
+/// Normalise a method signature string into a stable key (N1, N8).
 ///
-/// ⭐ ПОЧИНЕН БАГ ОРИГИНАЛА (Python `semdiff._normsig`): там обратная карта
-/// применялась ЦИКЛОМ по словарю, каждая замена поверх результата предыдущей.
-/// Из-за этого замены СЦЕПЛЯЛИСЬ (`{"a_x": "a", "a": "b"}` давало `a_x → a → b`)
-/// и результат зависел от порядка строк в `mapping.txt` — то есть сигнатура
-/// нормализовалась не так, как ссылки (`_apply_rev` там делает ОДИН просмотр
-/// словаря и не сцепляется). Здесь — один одновременный проход: каждое имя
-/// заменяется ровно один раз, порядок `mapping.txt` больше ни на что не влияет.
+/// ⭐ FIXED A BUG OF THE ORIGINAL (Python `semdiff._normsig`): there the reverse map
+/// was applied in a LOOP over the dictionary, each replacement on top of the previous result.
+/// Because of that, replacements CHAINED (`{"a_x": "a", "a": "b"}` gave `a_x → a → b`)
+/// and the result depended on the order of lines in `mapping.txt` — i.e. the signature
+/// was normalised differently from the references (`_apply_rev` there does ONE pass over
+/// the dictionary and does not chain). Here it is a single simultaneous pass: each name
+/// is replaced exactly once, and the order of `mapping.txt` no longer affects anything.
 pub fn normsig(sig: &str, rev: &BTreeMap<String, String>) -> String {
     let s = if rev.is_empty() {
         sig.to_string()
     } else {
         let mut keys: Vec<&String> = rev.keys().collect();
-        // длинные имена первыми — на случай движка без \b-семантики
+        // longest names first — in case of an engine without \b semantics
         keys.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
         let alt = keys.iter().map(|k| regex::escape(k)).collect::<Vec<_>>().join("|");
         match Regex::new(&format!(r"\b({alt})\b")) {
@@ -190,10 +190,10 @@ pub fn normsig(sig: &str, rev: &BTreeMap<String, String>) -> String {
     s.trim().trim_end_matches(';').trim().to_string()
 }
 
-/// Разобрать вывод `javap -c -p` в {нормализованная_сигнатура: множество_ссылок}.
+/// Parse `javap -c -p` output into {normalised_signature: set_of_references}.
 ///
-/// Вынесено отдельно от запуска процесса — это ядро, покрываемое голден-тестом
-/// против Python на одном и том же тексте `javap`.
+/// Kept separate from spawning the process — this is the core covered by a golden test
+/// against Python on the same `javap` text.
 pub fn parse_javap(stdout: &str, rev: &BTreeMap<String, String>) -> BTreeMap<String, BTreeSet<Ref>> {
     let mut res: BTreeMap<String, BTreeSet<Ref>> = BTreeMap::new();
     let mut cur: Option<String> = None;
@@ -228,7 +228,7 @@ pub fn parse_javap(stdout: &str, rev: &BTreeMap<String, String>) -> BTreeMap<Str
                 // N5
                 refs.insert(("NewArray".into(), parts[1].to_string(), String::new()));
             } else if REF_OPS.contains(&op) && !comment.trim().is_empty() {
-                // N6 исключает checkcast/instanceof
+                // N6 excludes checkcast/instanceof
                 let cr = canon_ref(&comment, rev);
                 if is_getclass(&cr) {
                     continue; // N7
@@ -243,7 +243,7 @@ pub fn parse_javap(stdout: &str, rev: &BTreeMap<String, String>) -> BTreeMap<Str
     res
 }
 
-/// `javap -c -p` над одним классом. None, если javap не отработал.
+/// `javap -c -p` over one class. None if javap failed.
 pub fn disassemble(
     classpath: &str,
     binary_name: &str,
@@ -265,8 +265,8 @@ pub fn disassemble(
     Some(parse_javap(&r.stdout, rev))
 }
 
-/// Поле `only_orig` у пометки двулико, как в Python: булево «метод только в
-/// оригинале» для одностороннего метода и список ссылок для расхождения множеств.
+/// The `only_orig` field of a flag is two-faced, as in Python: a boolean "method only in
+/// the original" for a one-sided method, and a list of references for a set mismatch.
 #[derive(Debug, Clone, serde::Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum OnlyOrig {
@@ -290,7 +290,7 @@ pub struct ClassResult {
     pub flagged: Vec<Flagged>,
 }
 
-/// Питоновский `repr` кортежа — голден-совместимое представление ссылки.
+/// Python's `repr` of a tuple — the golden-compatible representation of a reference.
 pub fn ref_repr(r: &Ref) -> String {
     if r.0 == "Type" || r.0 == "NewArray" || r.0 == "?" {
         format!("('{}', '{}')", r.0, r.1)
@@ -299,8 +299,8 @@ pub fn ref_repr(r: &Ref) -> String {
     }
 }
 
-/// Сравнить методы одного класса. None, если хоть одна сторона не
-/// дизассемблировалась (вызывающая сторона считает это «пропущено»).
+/// Compare the methods of one class. None if either side failed to
+/// disassemble (the caller treats it as "skipped").
 pub fn compare_class(
     orig_cp: &str,
     recompiled_cp: &str,
@@ -312,7 +312,7 @@ pub fn compare_class(
     Some(compare_maps(binary_name, &a, &b))
 }
 
-/// Чистое сравнение двух разобранных дизассемблеров (ядро для голден-тестов).
+/// Pure comparison of two parsed disassemblies (the core for golden tests).
 pub fn compare_maps(
     binary_name: &str,
     a: &BTreeMap<String, BTreeSet<Ref>>,
@@ -350,7 +350,7 @@ pub fn compare_maps(
     ClassResult { class: binary_name.to_string(), flagged }
 }
 
-// ───────────────────────────── оркестрация ──────────────────────────────────
+// ───────────────────────────── orchestration ─────────────────────────────────
 fn jar_class_names(jar: &Path) -> Vec<String> {
     util::zip_namelist(jar)
         .unwrap_or_default()
@@ -373,12 +373,12 @@ pub struct SemdiffReport {
     pub total_flagged_methods: i64,
 }
 
-/// Прогнать семантический round-trip по каждому классу `orig_jar`, который пересобрался.
+/// Run the semantic round trip over every class of `orig_jar` that was rebuilt.
 ///
-/// `orig_jar` — ПЕРЕИМЕНОВАННЫЙ jar (канонический API), сторона «оригинального» байткода.
-/// `merged_classes_dir` — каталог `_classes` от пересборки best-effort.
-/// `mapping` — `mapping.txt` переименователя (для примирения N8), необязателен.
-/// `skip` — бинарные имена, которые пропустить (например, не пересобравшиеся классы).
+/// `orig_jar` is the RENAMED jar (canonical API), the "original" bytecode side.
+/// `merged_classes_dir` is the `_classes` directory from the best-effort rebuild.
+/// `mapping` is the renamer's `mapping.txt` (for N8 reconciliation), optional.
+/// `skip` — binary names to skip (e.g. classes that did not rebuild).
 pub fn check(
     orig_jar: &Path,
     merged_classes_dir: &Path,
@@ -429,14 +429,14 @@ pub fn check(
     }
 }
 
-// ─────────────── дрейф на уровне варианта (--reject-semantic-drift) ─────────
-/// Даёт ли компиляция `after_text` (автофикснутого варианта класса `rel`) байткод,
-/// чьё нормализованное множество ссылок ДРЕЙФУЕТ от байткода исходного jar, тогда
-/// как `before_text` НЕ дрейфовал?
+// ─────────────── variant-level drift (--reject-semantic-drift) ──────────────
+/// Does compiling `after_text` (an autofixed variant of class `rel`) give bytecode
+/// whose normalised reference set DRIFTS from the original jar's bytecode, while
+/// `before_text` did NOT drift?
 ///
-/// Консервативно: возвращает false («дрейфа нет») всякий раз, когда решить нельзя —
-/// нет javap, вариант не компилируется, класса нет в исходном jar, — так что решение
-/// о приёме может стать только СТРОЖЕ, но не мягче.
+/// Conservative: returns false ("no drift") whenever it cannot decide —
+/// no javap, the variant does not compile, the class is missing from the original jar — so the
+/// acceptance decision can only become STRICTER, never looser.
 pub fn variant_drifts(
     orig_jar: &Path,
     before_text: &str,
@@ -510,7 +510,7 @@ pub fn variant_drifts(
     };
     let after_drift = drift(&after);
     let before_drift = before.map(|b| drift(&b)).unwrap_or(false);
-    // регрессией считаем только «ПОСЛЕ дрейфует, а ДО не дрейфовал»
+    // count as a regression only "AFTER drifts while BEFORE did not"
     after_drift && !before_drift
 }
 

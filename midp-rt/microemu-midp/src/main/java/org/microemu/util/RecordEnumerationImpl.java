@@ -193,7 +193,7 @@ public class RecordEnumerationImpl implements RecordEnumeration
 			try {
 				int recordId = 1;
 				int i = 0;
-				while (i < recordStoreImpl.getNumRecords()) {
+				while (i < recordStoreImpl.numRecordsInternal()) {
 					try {
 			            byte[] data = recordStoreImpl.getRecord(recordId);
 			            i++;

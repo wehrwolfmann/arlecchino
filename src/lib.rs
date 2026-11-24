@@ -16,6 +16,9 @@
 
 pub const VERSION: &str = "1.0.0";
 
+pub mod ai;
+pub mod ai_model;
+pub mod aifix;
 pub mod autofix;
 pub mod cli;
 pub mod config;
@@ -31,6 +34,7 @@ pub mod midp_stub;
 pub mod midprun;
 pub mod normalize;
 pub mod permethod;
+pub mod portrust;
 pub mod rename;
 pub mod roundtrip;
 pub mod semdiff;

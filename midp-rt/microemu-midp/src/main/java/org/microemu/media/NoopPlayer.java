@@ -1,11 +1,11 @@
 /*
- *  arlecchino-midp-rt: no-op реализация Player для заглушечного слоя JSR-135
- *  (звук отложен до Фазы 2 Arlecchino). Корректно ведёт state-machine
- *  UNREALIZED -> REALIZED -> PREFETCHED -> STARTED -> ... -> CLOSED, чтобы
- *  игры, проверяющие getState(), не ломались; ничего не воспроизводит.
+ *  arlecchino-midp-rt: a no-op Player implementation for the JSR-135 stub layer
+ *  (sound is deferred to Arlecchino Phase 2). It drives the state machine
+ *  UNREALIZED -> REALIZED -> PREFETCHED -> STARTED -> ... -> CLOSED correctly, so
+ *  games that check getState() do not break; it plays nothing.
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория.
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root.
  */
 package org.microemu.media;
 
@@ -55,7 +55,7 @@ public class NoopPlayer implements Player {
 
 	private final ToneControl toneControl = new ToneControl() {
 		public void setSequence(byte[] sequence) {
-			// no-op: тоновые последовательности не воспроизводятся
+			// no-op: tone sequences are not played
 		}
 	};
 
@@ -140,7 +140,7 @@ public class NoopPlayer implements Player {
 	}
 
 	public void addPlayerListener(PlayerListener playerListener) {
-		// no-op: события не генерируются (звук не воспроизводится)
+		// no-op: no events are generated (no sound is played)
 	}
 
 	public void removePlayerListener(PlayerListener playerListener) {

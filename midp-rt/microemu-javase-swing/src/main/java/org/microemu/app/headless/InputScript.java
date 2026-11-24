@@ -1,21 +1,24 @@
 /*
- *  arlecchino-midp-rt: скрипт ввода для headless-захвата.
+ *  arlecchino-midp-rt: input script for headless capture.
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория. База форка — MicroEmulator (barteo/microemu).
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root. The fork is based on MicroEmulator (barteo/microemu).
  *
- *  Формат файла — JSON-массив событий (формат difftest Arlecchino,
+ *  The file format is a JSON array of events (Arlecchino difftest format,
  *  docs/difftest_format.md):
  *
  *      [{"t_ms": 4500, "key": "FIRE", "action": "tap"}, ...]
  *
- *  t_ms отсчитывается от КОНЦА boot-wait (начала захвата кадров);
- *  key — имя клавиши (UP/DOWN/LEFT/RIGHT, NUM0-9, STAR, POUND, FIRE/SELECT,
- *  SOFT_LEFT/SOFT_RIGHT, CLR) либо число = сырой MIDP-keyCode;
- *  action — press | release | tap (= press и сразу release).
+ *  t_ms counts from the END of boot-wait (the start of frame capture);
+ *  instead of t_ms there may be "tick": N — the tick number (frame boundaries, the
+ *  "F N" lines of the trace); such a scenario is deterministic and needs --ticks mode
+ *  (see TickDriver). Mixing t_ms and tick in one file is not allowed;
+ *  key — a key name (UP/DOWN/LEFT/RIGHT, NUM0-9, STAR, POUND, FIRE/SELECT,
+ *  SOFT_LEFT/SOFT_RIGHT, CLR) or a number = a raw MIDP keyCode;
+ *  action — press | release | tap (= press immediately followed by release).
  *
- *  JSON-парсер минимальный (массив плоских объектов: строки/числа/литералы) —
- *  ровно под этот формат, без внешних зависимостей.
+ *  The JSON parser is minimal (an array of flat objects: strings/numbers/literals) —
+ *  made exactly for this format, with no external dependencies.
  */
 package org.microemu.app.headless;
 
@@ -43,7 +46,8 @@ public class InputScript {
 
 	public static class Event {
 		public long tMs;
-		public Object key;     // String (имя) либо Number (сырой MIDP-keyCode)
+		public long tick = -1; // >= 0 — a tick-based event (--ticks mode)
+		public Object key;     // String (a name) or Number (a raw MIDP keyCode)
 		public String action;  // press | release | tap
 	}
 
@@ -73,9 +77,18 @@ public class InputScript {
 		KEYMAP.put("CLR", ButtonName.DELETE);
 	}
 
-	// ───────────────────────────── инжекция ──────────────────────────────────
+	/** All events of the scenario are tick-based (an empty scenario fits both modes). */
+	public static boolean byTick(List<Event> events) {
+		return !events.isEmpty() && events.get(0).tick >= 0;
+	}
+
+	// ───────────────────────────── injection ─────────────────────────────────
 	public static void inject(Event e) {
 		String action = (e.action == null) ? "press" : e.action;
+		if (!action.equals("press") && !action.equals("release") && !action.equals("tap")) {
+			System.err.println("inputs: unknown action " + action + " — skipped");
+			return;
+		}
 		if (action.equals("press") || action.equals("tap")) {
 			fire(e.key, true);
 		}
@@ -85,12 +98,12 @@ public class InputScript {
 	}
 
 	/**
-	 * Канонический вход для живой инжекции одной клавиши (символическое имя из
-	 * KEYMAP, напр. "UP"/"SELECT"/"NUM5"). Переиспользуется обратным каналом
-	 * ввода ShellFrameBridge — чтобы маппинг клавиш жил в одном месте, а не
-	 * дублировался. Поток-безопасно: ниже всё уходит в DisplayAccess.keyPressed,
-	 * который кладёт событие в очередь EventDispatcher (или атомарно обновляет
-	 * GameCanvas), так что вызывать можно из любого потока.
+	 * The canonical entry point for live injection of one key (a symbolic name from
+	 * KEYMAP, e.g. "UP"/"SELECT"/"NUM5"). Reused by the ShellFrameBridge input back
+	 * channel, so that the key mapping lives in one place instead of being
+	 * duplicated. Thread-safe: below, everything goes to DisplayAccess.keyPressed,
+	 * which puts the event into the EventDispatcher queue (or atomically updates
+	 * GameCanvas), so it can be called from any thread.
 	 */
 	public static void injectKey(String name, boolean press) {
 		fire(name, press);
@@ -103,7 +116,7 @@ public class InputScript {
 		}
 		ButtonName name = (ButtonName) KEYMAP.get(String.valueOf(key).toUpperCase());
 		if (name == null) {
-			System.err.println("inputs: неизвестная клавиша " + key + " — пропущена");
+			System.err.println("inputs: unknown key " + key + " — skipped");
 			return;
 		}
 		J2SEButton btn = J2SEDeviceButtonsHelper.getButton(name);
@@ -111,7 +124,13 @@ public class InputScript {
 			btn = J2SEDeviceButtonsHelper.getButton(ButtonName.BACK_SPACE);
 		}
 		if (btn == null) {
-			System.err.println("inputs: у устройства нет кнопки " + key + " — пропущена");
+			System.err.println("inputs: the device has no key " + key + " — skipped");
+			return;
+		}
+		if (org.microemu.TickInput.isDelivering() && DeviceFactory.getDevice().hasRepeatEvents()) {
+			// tick mode: on a device with auto-repeat, the release goes through a
+			// timer (50 ms of wall time) — we send the raw keyCode synchronously
+			rawKey(btn.getKeyCode(), press);
 			return;
 		}
 		J2SEInputMethod im = (J2SEInputMethod) DeviceFactory.getDevice().getInputMethod();
@@ -138,7 +157,7 @@ public class InputScript {
 		}
 	}
 
-	// ──────────────────────────── мини-JSON ──────────────────────────────────
+	// ──────────────────────────── mini JSON ──────────────────────────────────
 	public static List<Event> parse(File f) throws IOException {
 		byte[] raw = new byte[(int) f.length()];
 		InputStream in = new FileInputStream(f);
@@ -155,9 +174,21 @@ public class InputScript {
 			in.close();
 		}
 		List<Event> events = parseText(new String(raw, "UTF-8"));
+		int byTick = 0;
+		for (int i = 0; i < events.size(); i++) {
+			if (events.get(i).tick >= 0) {
+				byTick++;
+			}
+		}
+		if (byTick != 0 && byTick != events.size()) {
+			throw new IOException("inputs JSON: t_ms-based and tick-based events cannot be mixed in one file");
+		}
+		// the sort is stable: events of the same tick/moment keep the file order
 		Collections.sort(events, new Comparator<Event>() {
 			public int compare(Event a, Event b) {
-				return (a.tMs < b.tMs) ? -1 : (a.tMs > b.tMs) ? 1 : 0;
+				long x = (a.tick >= 0) ? a.tick : a.tMs;
+				long y = (b.tick >= 0) ? b.tick : b.tMs;
+				return (x < y) ? -1 : (x > y) ? 1 : 0;
 			}
 		});
 		return events;
@@ -178,6 +209,16 @@ public class InputScript {
 			Event e = new Event();
 			Object t = obj.get("t_ms");
 			e.tMs = (t instanceof Number) ? ((Number) t).longValue() : 0L;
+			Object tk = obj.get("tick");
+			if (tk != null) {
+				if (!(tk instanceof Long) || ((Long) tk).longValue() < 0) {
+					throw new IOException("inputs JSON: tick must be an integer >= 0, got " + tk);
+				}
+				if (t != null) {
+					throw new IOException("inputs JSON: the event has both t_ms and tick — only one is allowed");
+				}
+				e.tick = ((Long) tk).longValue();
+			}
 			e.key = obj.get("key");
 			Object a = obj.get("action");
 			e.action = (a == null) ? "press" : a.toString();
@@ -188,14 +229,14 @@ public class InputScript {
 				break;
 			}
 			if (c != ',') {
-				throw new IOException("inputs JSON: ожидалась ',' или ']' на позиции " + (p.i - 1));
+				throw new IOException("inputs JSON: expected ',' or ']' at position " + (p.i - 1));
 			}
 			p.ws();
 		}
 		return out;
 	}
 
-	/** Карманный разборщик: массив плоских объектов строка/число/литерал. */
+	/** A pocket parser: an array of flat objects of string/number/literal. */
 	private static class P {
 		final String s;
 		int i;
@@ -212,7 +253,7 @@ public class InputScript {
 
 		char peek() throws IOException {
 			if (i >= s.length()) {
-				throw new IOException("inputs JSON: неожиданный конец файла");
+				throw new IOException("inputs JSON: unexpected end of file");
 			}
 			return s.charAt(i);
 		}
@@ -225,7 +266,7 @@ public class InputScript {
 
 		void expect(char c) throws IOException {
 			if (next() != c) {
-				throw new IOException("inputs JSON: ожидался '" + c + "' на позиции " + (i - 1));
+				throw new IOException("inputs JSON: expected '" + c + "' at position " + (i - 1));
 			}
 		}
 
@@ -251,7 +292,7 @@ public class InputScript {
 					break;
 				}
 				if (c != ',') {
-					throw new IOException("inputs JSON: ожидалась ',' или '}' на позиции " + (i - 1));
+					throw new IOException("inputs JSON: expected ',' or '}' at position " + (i - 1));
 				}
 			}
 			return m;
@@ -277,7 +318,7 @@ public class InputScript {
 				i += 4;
 				return null;
 			}
-			throw new IOException("inputs JSON: неожиданный символ '" + c + "' на позиции " + i);
+			throw new IOException("inputs JSON: unexpected character '" + c + "' at position " + i);
 		}
 
 		String string() throws IOException {
@@ -298,7 +339,7 @@ public class InputScript {
 					case 'f': b.append('\f'); break;
 					case 'u':
 						if (i + 4 > s.length()) {
-							throw new IOException("inputs JSON: оборванный \\u");
+							throw new IOException("inputs JSON: truncated \\u");
 						}
 						b.append((char) Integer.parseInt(s.substring(i, i + 4), 16));
 						i += 4;
@@ -330,7 +371,7 @@ public class InputScript {
 			try {
 				return fp ? (Number) Double.valueOf(tok) : (Number) Long.valueOf(tok);
 			} catch (NumberFormatException e) {
-				throw new IOException("inputs JSON: не число: " + tok);
+				throw new IOException("inputs JSON: not a number: " + tok);
 			}
 		}
 	}

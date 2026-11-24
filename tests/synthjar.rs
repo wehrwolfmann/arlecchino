@@ -2,7 +2,7 @@
 //!
 //! Ported from the reference suite's `tests/test_synthjar.py` + `test_renamer_perf.py`.
 //!
-//! The fixture generator (`tests/common/mod.rs`) compiles five small classes with javac
+//! The fixture generator (`tests/common/mod.rs`) compiles nine small classes with javac
 //! and then injects, with ASM, the exact source-illegal collisions ProGuard-style
 //! obfuscation produces.  Nothing is vendored: the jar is built on every run.
 //!
@@ -13,6 +13,9 @@
 //! | (c) type-shadow | field `Engine.State:I` shadowing in-jar type `State` | renamed, tagged `(type-shadow)` |
 //! | (d) const-interface shadow | `Consts.b` shadowed by `Holder.b` | the constant is renamed, tagged `(const-iface-shadow)` |
 //! | (e) MIDP callback override + twin | `Screen` re-parented to `Canvas`, `keyPressed(I)I` next to `keyPressed(I)V` | `keyPressed(I)V` stays LOCKED; the twin is renamed |
+//! | (f) self-name type-shadow | static field `Tally.Tally:I`, `Tally` calls its own statics | renamed, tagged `(type-shadow)` |
+//! | (g) inherited type-shadow | `Frame.Part:I` inherited by `Body`, which names type `Part` | renamed at `Frame`; `Body`'s read (owner `Body`) follows |
+//! | (h) reserved word as a name | method `Body.do()I`, field `Holder.if:I` | both get a source-legal name; the field tagged `(keyword)` |
 //!
 //! Needs javac + the ASM jars only — no decompiler engines, no network — except for
 //! `full_pipeline_has_zero_isolated_errors`, which additionally needs the engines.
@@ -92,6 +95,17 @@ fn renamer_resolves_every_injected_collision() {
         m.contains_key("Screen.keyPressed (I)I"),
         "colliding keyPressed twin must be renamed:\n{text}"
     );
+
+    // (f) self-name: `class Tally { static int Tally; }` is legal, but a decompiler
+    //     prints the class's own static calls as `Tally.bump()` — the field must move.
+    assert!(m.contains_key("Tally.Tally I"), "self-name type-shadow rename missing:\n{text}");
+
+    // (g) inherited: Frame never names type Part, its subclass Body does.
+    assert!(m.contains_key("Frame.Part I"), "inherited type-shadow rename missing:\n{text}");
+
+    // (h) reserved words: no source can spell `do` / `if`, so both move.
+    assert!(m.contains_key("Body.do ()I"), "keyword method rename missing:\n{text}");
+    assert!(m.contains_key("Holder.if I"), "keyword field rename missing:\n{text}");
 
     // after renaming the jar must hold no source-illegal collisions at all
     assert!(!rename::has_member_collisions(&jar2), "collisions survived the rename");
@@ -190,7 +204,7 @@ fn full_pipeline_has_zero_isolated_errors() {
 /// Sanity: the golden the byte-for-byte test compares against is the real thing, not
 /// an empty file that would make that assertion vacuous.
 #[test]
-fn golden_mapping_covers_all_five_cases() {
+fn golden_mapping_covers_every_case() {
     let text = std::fs::read_to_string(common::golden_dir().join("synth_mapping.txt")).unwrap();
     for want in [
         "Consts.b Z -> ",
@@ -200,9 +214,14 @@ fn golden_mapping_covers_all_five_cases() {
         "Engine.a I -> ",
         "Engine.flag (I)Z -> ",
         "Screen.keyPressed (I)I -> ",
+        "Tally.Tally I -> ",
+        "Frame.Part I -> ",
+        "Body.do ()I -> ",
+        "Holder.if I -> ",
+        "(keyword)",
     ] {
         assert!(text.contains(want), "golden is missing {want:?}:\n{text}");
     }
     assert!(!text.contains("Screen.keyPressed (I)V"), "golden must not rename the locked callback");
-    assert_eq!(text.lines().filter(|l| l.contains("->")).count(), 5);
+    assert_eq!(text.lines().filter(|l| l.contains("->")).count(), 9);
 }

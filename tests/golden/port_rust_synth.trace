@@ -1,0 +1,43 @@
+RecordStore.open "synthstore"
+RecordStore.getNumRecords "synthstore" 0
+RecordStore.addRecord "synthstore" len=4 hex=41524c31
+RecordStore.close "synthstore"
+Display.setCurrent
+F
+setColor 0
+fillRect 0 0 240 320
+setColor 52326
+fillRect 0 0 16 16
+fillRect 32 0 16 16
+fillRect 64 0 16 16
+fillRect 96 0 16 16
+fillRect 16 16 16 16
+fillRect 48 16 16 16
+fillRect 80 16 16 16
+fillRect 112 16 16 16
+fillRect 0 32 16 16
+fillRect 32 32 16 16
+fillRect 64 32 16 16
+fillRect 96 32 16 16
+fillRect 16 48 16 16
+fillRect 48 48 16 16
+fillRect 80 48 16 16
+fillRect 112 48 16 16
+fillRect 0 64 16 16
+fillRect 32 64 16 16
+fillRect 64 64 16 16
+fillRect 96 64 16 16
+fillRect 16 80 16 16
+fillRect 48 80 16 16
+fillRect 80 80 16 16
+fillRect 112 80 16 16
+fillRect 0 96 16 16
+fillRect 32 96 16 16
+fillRect 64 96 16 16
+fillRect 96 96 16 16
+fillRect 16 112 16 16
+fillRect 48 112 16 16
+fillRect 80 112 16 16
+fillRect 112 112 16 16
+setColor 0
+fillRect 0 296 240 24

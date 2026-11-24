@@ -984,18 +984,8 @@ public class Main extends JFrame {
 	}
 	
 	protected void setDeviceSize(DeviceDisplayImpl deviceDisplay, int width, int height) {
-	    // move the soft buttons
-	    int menuh = 0;
-	    Enumeration en = DeviceFactory.getDevice().getSoftButtons().elements();
-        while (en.hasMoreElements()) {
-            SoftButton button = (SoftButton) en.nextElement();
-            Rectangle paintable = button.getPaintable();
-            paintable.y = height - paintable.height;
-            menuh = paintable.height;
-        }
-        // resize the display area
-        deviceDisplay.setDisplayPaintable(new Rectangle(0, 0, width, height - menuh));
-        deviceDisplay.setDisplayRectangle(new Rectangle(0, 0, width, height));
+	    // move the soft buttons and resize the display area (shared with --resizableDevice)
+	    Common.setDisplaySize(deviceDisplay, width, height);
         ((SwingDisplayComponent) devicePanel.getDisplayComponent()).init();
         // update display
         MIDletAccess ma = MIDletBridge.getMIDletAccess();
@@ -1082,11 +1072,11 @@ public class Main extends JFrame {
 		}
 		app.common.initMIDlet(true);
 
-		// Форк arlecchino-midp-rt: мост кадров в Rust-рендер (allods-shell).
-		// Активен только при -Dallods.shell.socket=PATH / env ALLODS_SHELL_SOCKET;
-		// иначе no-op (обычное окно midp-rt не меняется). В оконном режиме
-		// listener поверхности используется лишь zoom-окном/GIF-рекордером
-		// (по умолчанию выключены), поэтому основное окно не страдает.
+		// arlecchino-midp-rt fork: frame bridge to the Rust renderer (allods-shell).
+		// Active only with -Dallods.shell.socket=PATH / env ALLODS_SHELL_SOCKET;
+		// otherwise a no-op (the normal midp-rt window is unchanged). In window mode
+		// the surface listener is used only by the zoom window/GIF recorder
+		// (both off by default), so the main window is not affected.
 		org.microemu.app.shell.ShellFrameBridge.attachIfEnabled(app.emulatorContext.getDisplayComponent());
 
 		app.addComponentListener(app.componentListener);

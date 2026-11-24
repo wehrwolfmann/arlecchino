@@ -1,17 +1,19 @@
 /*
- *  arlecchino-midp-rt: захват кадров headless-рендера в PNG + index.json.
+ *  arlecchino-midp-rt: capture of headless rendering frames into PNG + index.json.
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория. База форка — MicroEmulator (barteo/microemu).
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root. The fork is based on MicroEmulator (barteo/microemu).
  *
- *  Слушает repaint'ы NoUiDisplayComponent (последняя поверхность), а цикл
- *  захвата сэмплирует её каждые period-ms: PNG-кадр frame_NNNN.png, sha256
- *  СЫРЫХ RGB24-байтов (а не PNG-контейнера) и признак blank (все пиксели
- *  одного цвета — на экране ничего не нарисовано). Итог — index.json
- *  (формат зеркалит frames.json из arlecchino/diffrun.py).
+ *  Listens to NoUiDisplayComponent repaints (the latest surface), and the capture
+ *  loop samples it every period-ms: a PNG frame frame_NNNN.png, the sha256 of the
+ *  RAW RGB24 bytes (not of the PNG container) and a blank flag (all pixels
+ *  of one colour — nothing is drawn on screen). The result is index.json
+ *  (the format mirrors frames.json from arlecchino/diffrun.py).
  *
- *  События ввода (InputScript) инжектятся best-effort по wall-clock: перед
- *  кадром, у которого now >= t_ms; t_ms отсчитывается от конца boot-wait.
+ *  Input events (InputScript) are injected best-effort by wall clock: before
+ *  the frame for which now >= t_ms; t_ms counts from the end of boot-wait.
+ *  The deterministic mode (--ticks) takes frames not here but at tick
+ *  boundaries — see TickDriver.
  */
 package org.microemu.app.headless;
 
@@ -59,8 +61,8 @@ public class FrameRecorder implements DisplayRepaintListener {
 	}
 
 	/**
-	 * Главный цикл: boot-wait, затем frames кадров каждые period-ms с
-	 * инжекцией событий ввода; index.json в конце. Возвращает exit-код.
+	 * Main loop: boot-wait, then `frames` frames every period-ms with
+	 * injection of input events; index.json at the end. Returns the exit code.
 	 */
 	public int captureLoop(CaptureOptions opts) {
 		List<InputScript.Event> events;
@@ -70,6 +72,10 @@ public class FrameRecorder implements DisplayRepaintListener {
 					: new ArrayList<InputScript.Event>();
 		} catch (IOException e) {
 			System.err.println("inputs: " + e.getMessage());
+			return 2;
+		}
+		if (InputScript.byTick(events)) {
+			System.err.println("inputs: tick-based events require --ticks N mode");
 			return 2;
 		}
 		sleep(opts.bootWaitMs);
@@ -102,8 +108,8 @@ public class FrameRecorder implements DisplayRepaintListener {
 		}
 	}
 
-	// ───────────────────────────── один кадр ─────────────────────────────────
-	private void snapshot(int index) throws Exception {
+	// ───────────────────────────── one frame ─────────────────────────────────
+	void snapshot(int index) throws Exception {
 		BufferedImage img = copyCurrent();
 		int w = img.getWidth();
 		int h = img.getHeight();
@@ -130,7 +136,7 @@ public class FrameRecorder implements DisplayRepaintListener {
 		recorded.add(f);
 	}
 
-	/** Копия текущей поверхности (под её замком) или чёрный кадр размера LCD. */
+	/** A copy of the current surface (under its lock) or a black LCD-sized frame. */
 	private BufferedImage copyCurrent() {
 		J2SEGraphicsSurface s = lastSurface;
 		if (s == null) {
@@ -162,13 +168,17 @@ public class FrameRecorder implements DisplayRepaintListener {
 	}
 
 	// ───────────────────────────── index.json ────────────────────────────────
-	private void writeIndex(CaptureOptions opts) throws IOException {
+	void writeIndex(CaptureOptions opts) throws IOException {
 		StringBuilder b = new StringBuilder();
 		b.append("{\n");
 		b.append("  \"engine\": \"midp-rt\",\n");
 		b.append("  \"jar\": ").append(q(opts.target)).append(",\n");
 		b.append("  \"frame_period_ms\": ").append(opts.periodMs).append(",\n");
 		b.append("  \"boot_wait_ms\": ").append(opts.bootWaitMs).append(",\n");
+		if (opts.tickMode()) {
+			// frame i = the screen after tick i is drawn (frame_period_ms has no effect)
+			b.append("  \"ticks\": ").append(opts.ticks).append(",\n");
+		}
 		b.append("  \"rms_dir\": ")
 				.append(opts.rmsDir == null ? "null" : q(opts.rmsDir.getPath()))
 				.append(",\n");
@@ -193,7 +203,7 @@ public class FrameRecorder implements DisplayRepaintListener {
 		}
 	}
 
-	/** JSON-экранирование строки. */
+	/** JSON string escaping. */
 	private static String q(String s) {
 		StringBuilder b = new StringBuilder(s.length() + 2);
 		b.append('"');

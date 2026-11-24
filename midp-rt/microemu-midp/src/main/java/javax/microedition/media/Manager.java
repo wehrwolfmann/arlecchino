@@ -1,15 +1,15 @@
 /*
- *  arlecchino-midp-rt: слой JSR-135 (MMAPI), написан по публичной
- *  спецификации JSR-135 для форка arlecchino-midp-rt (2026), LGPL 2.1 —
- *  см. LICENSE/NOTICE в корне репозитория.
+ *  arlecchino-midp-rt: the JSR-135 (MMAPI) layer, written from the public
+ *  JSR-135 specification for the arlecchino-midp-rt fork (2026), LGPL 2.1 —
+ *  see LICENSE/NOTICE at the repository root.
  *
- *  Реальный звук: MIDI -> org.microemu.media.MidiPlayer (javax.sound.midi),
+ *  Real sound: MIDI -> org.microemu.media.MidiPlayer (javax.sound.midi),
  *  WAV/AU/AIFF -> org.microemu.media.SampledPlayer (javax.sound.sampled),
- *  playTone -> org.microemu.media.ToneGenerator. Тип определяется по
- *  переданному content-type, при его отсутствии — по сигнатуре данных
- *  (MThd / RIFF...WAVE / .snd / FORM). Неподдержанные типы и системное
- *  свойство org.microemu.media.noop=true дают безопасную no-op заглушку
- *  (org.microemu.media.NoopPlayer) — игра работает без звука.
+ *  playTone -> org.microemu.media.ToneGenerator. The type is determined by the
+ *  given content-type, or, when it is missing, by the data signature
+ *  (MThd / RIFF...WAVE / .snd / FORM). Unsupported types and the system
+ *  property org.microemu.media.noop=true give a safe no-op stub
+ *  (org.microemu.media.NoopPlayer) — the game runs without sound.
  */
 package javax.microedition.media;
 
@@ -28,7 +28,7 @@ public final class Manager {
 
 	public static final String TONE_DEVICE_LOCATOR = "device://tone";
 
-	/** Системное свойство: true = всегда no-op плееры (headless/diff-тесты). */
+	/** System property: true = always no-op players (headless/diff tests). */
 	private static final String NOOP_PROPERTY = "org.microemu.media.noop";
 
 	private static final String[] CONTENT_TYPES = { "audio/midi", "audio/x-mid",
@@ -72,9 +72,9 @@ public final class Manager {
 		if (locator == null) {
 			throw new IllegalArgumentException("locator is null");
 		}
-		// device://tone (ToneControl-последовательности) пока не воспроизводится;
-		// прочие протоколы (http/file/capture) не поддержаны — отдаём no-op,
-		// чтобы игры с необязательным звуком не падали на резолве плеера.
+		// device://tone (ToneControl sequences) is not played yet;
+		// other protocols (http/file/capture) are not supported — we return a no-op
+		// so that games with optional sound do not crash while resolving the player.
 		return new NoopPlayer(null);
 	}
 
@@ -135,7 +135,7 @@ public final class Manager {
 		return out.toByteArray();
 	}
 
-	/** Классификация носителя: "midi" | "sampled" | null (неизвестно). */
+	/** Media classification: "midi" | "sampled" | null (unknown). */
 	private static String mediaKind(String type, byte[] data) {
 		if (type != null) {
 			String t = type.toLowerCase();
@@ -147,7 +147,7 @@ public final class Manager {
 				return "sampled";
 			}
 		}
-		// сигнатуры данных (если content-type не передан или незнаком)
+		// data signatures (if the content-type is not given or unknown)
 		if (startsWith(data, "MThd")) {
 			return "midi";
 		}

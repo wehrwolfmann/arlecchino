@@ -22,8 +22,8 @@
  *  See the LGPL or the AL for the specific language governing permissions and
  *  limitations.
  *
- *  Изменения в форке arlecchino-midp-rt (2026): портировано с ASM 3.1 на ASM 9
- *  (MethodAdapter -> MethodVisitor(ASM9), visitMethodInsn с флагом isInterface).
+ *  Changes in the arlecchino-midp-rt fork (2026): ported from ASM 3.1 to ASM 9
+ *  (MethodAdapter -> MethodVisitor(ASM9), visitMethodInsn with the isInterface flag).
  *
  *  @version $Id$
  */

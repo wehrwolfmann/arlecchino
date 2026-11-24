@@ -64,8 +64,8 @@ import org.microemu.device.j2se.J2SEGraphicsSurface;
 import org.microemu.device.j2se.J2SEGraphicsSurfaceDisplayComponent;
 import org.microemu.device.j2se.J2SEInputMethod;
 
-// Форк arlecchino-midp-rt: реализует J2SEGraphicsSurfaceDisplayComponent —
-// общий интерфейс для GameCanvas.flushGraphics (Swing + headless NoUi)
+// arlecchino-midp-rt fork: implements J2SEGraphicsSurfaceDisplayComponent —
+// the common interface for GameCanvas.flushGraphics (Swing + headless NoUi)
 public class SwingDisplayComponent extends JComponent implements J2SEGraphicsSurfaceDisplayComponent {
 	private static final long serialVersionUID = 1L;
 
@@ -358,10 +358,10 @@ public class SwingDisplayComponent extends JComponent implements J2SEGraphicsSur
 		showMouseCoordinates = !showMouseCoordinates;
 	}
 
-	// Форк arlecchino-midp-rt: ленивое создание поверхности (как в
-	// NoUiDisplayComponent) — иначе GameCanvas.flushGraphics до первого
-	// repaintRequest получает null и кадры fullscreen-игр молча теряются
-	// (симптом: серое окно у GOTHIC-3 при рабочем headless-рендере)
+	// arlecchino-midp-rt fork: lazy creation of the surface (as in
+	// NoUiDisplayComponent) — otherwise GameCanvas.flushGraphics before the first
+	// repaintRequest gets null and the frames of fullscreen games are silently lost
+	// (symptom: a grey window for GOTHIC-3 while headless rendering works)
 	public J2SEGraphicsSurface getGraphicsSurface() {
 		synchronized (this) {
 			if (graphicsSurface == null) {

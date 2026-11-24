@@ -1,0 +1,14 @@
+// A hand-written name map for the synthetic test MIDlet (tests/fixtures/synthjar/midlet).
+import javax.microedition.lcdui.Graphics;
+
+class CheckerCanvas /* was SynthCanvas */ {
+    int lastKeyCode /* was lastKey */;
+    void paint(Graphics graphics) /* was paint */; /* locals: v2=width, v3=height, v4=row, v5=column */
+    // rejected on purpose: a parameter named like a field would shadow it
+    void keyPressed(int lastKeyCode) /* was keyPressed */;
+}
+
+class SynthMidlet /* was SynthMidlet */ {
+    void destroyApp(boolean unconditional) /* was destroyApp */;
+    void startApp() /* was startApp */; /* locals: v1=store, v2=bytes */
+}

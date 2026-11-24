@@ -102,11 +102,11 @@ public class FileRecordStoreManager implements RecordStoreManager {
 		return "File record store";
 	}
 
-	// Форк arlecchino-midp-rt: переопределение каталога RMS для headless-захвата
-	// (--rms DIR). Хранение ПЛОСКОЕ (без suite-<имя>): изоляцию прогона даёт сам
-	// вызывающий (каталог на прогон), а имена store-файлов остаются сравнимыми
-	// между оригинальным и пересобранным jar'ом, даже когда у них различаются
-	// имена MIDlet-классов (suite name).
+	// arlecchino-midp-rt fork: overriding the RMS directory for headless capture
+	// (--rms DIR). Storage is FLAT (no suite-<name>): run isolation is provided by the
+	// caller itself (a directory per run), and the store file names stay comparable
+	// between the original and the rebuilt jar even when their
+	// MIDlet class names (suite name) differ.
 	private static File storageRootOverride;
 
 	public static void setStorageRoot(File dir) {

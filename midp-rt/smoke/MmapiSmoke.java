@@ -1,10 +1,10 @@
 /*
- *  arlecchino-midp-rt: живой smoke-тест звука JSR-135 (MMAPI) на реальном
- *  MIDI-файле (сценарий Аллодов: createPlayer/realize/prefetch/
- *  setLoopCount(-1)/start + VolumeControl.setLevel/setMute, затем playTone).
- *  Запуск: java -cp ../build/midp-rt.jar:. MmapiSmoke <file.mid>
+ *  arlecchino-midp-rt: a live JSR-135 (MMAPI) sound smoke test on a real
+ *  MIDI file (the Allods scenario: createPlayer/realize/prefetch/
+ *  setLoopCount(-1)/start + VolumeControl.setLevel/setMute, then playTone).
+ *  Run: java -cp ../build/midp-rt.jar:. MmapiSmoke <file.mid>
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE.
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE.
  */
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;

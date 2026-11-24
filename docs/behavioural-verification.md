@@ -10,11 +10,11 @@ Stages A5/A6 of the runtime plan closed with the first run of `arlecchino diffte
 
 ### Preparing the pair
 
-1. **Original:** `~/Загрузки/J2ME/Allods_1_2_240x320.jar` (Nival, 240×320).
+1. **Original:** `path/to/Allods_1_2_240x320.jar` (Nival, 240×320).
 2. **Rebuild:** the full pipeline with the opt-in executability flag:
 
    ```
-   arlecchino decompile ~/Загрузки/J2ME/Allods_1_2_240x320.jar \
+   arlecchino decompile path/to/Allods_1_2_240x320.jar \
        -o /tmp/arl_allods_flat --config arlecchino.local.toml --flatten-packages
    ```
 
@@ -43,7 +43,7 @@ Stages A5/A6 of the runtime plan closed with the first run of `arlecchino diffte
 ### Noise calibration (original twice, no input, 40 frames × 150 ms)
 
 ```
-arlecchino difftest --calibrate ~/Загрузки/J2ME/Allods_1_2_240x320.jar \
+arlecchino difftest --calibrate path/to/Allods_1_2_240x320.jar \
     -o /tmp/arl_dt_calib --frames 40 --period-ms 150
 ```
 
@@ -60,7 +60,7 @@ This confirms the model from the A2 spike: content is deterministic, timing is n
 ### Verdict, orig vs rebuilt (with the input script, 70 frames × 150 ms)
 
 ```
-arlecchino difftest ~/Загрузки/J2ME/Allods_1_2_240x320.jar \
+arlecchino difftest path/to/Allods_1_2_240x320.jar \
     /tmp/arl_allods_rebuilt.jar --input inputs.json -o /tmp/arl_dt_allods \
     --frames 70 --period-ms 150
 ```
@@ -110,9 +110,9 @@ Implementation: `arlecchino difftest <orig.jar> --cross-engine [--state-tol N]` 
 | GOTHIC-3 | DIVERGE¹ | 7/6 | 17/16 | yes | false signal: progress-bar animation granularity |
 | Silent_Storm_240x320 | DIVERGE² | 1/0 + IllegalStateException | 6/6 | yes | **defect on the FreeJ2ME-plus side**, not midp-rt |
 
-¹ **Gothic 3 — a legitimate difference, not a midp-rt defect.** Both engines walk the same path: HandyGames splash + progress bar → sound dialog → title → menu → intro dialogue «Ксардас!.. Помоги мне!!!» (the same final screen, checked against the frames of both runs). midp-rt redraws the loading progress bar more often (frames 7–14 each hash separately) while FreeJ2ME-plus coalesces the repaints — 17 versus 7 unique states for an identical trajectory. This is a known limitation of the soft metric: the state counter is sensitive to animation granularity. With `--state-tol 10` the pair converges to AGREE.
+¹ **Gothic 3 — a legitimate difference, not a midp-rt defect.** Both engines walk the same path: HandyGames splash + progress bar → sound dialog → title → menu → intro dialogue «Ксардас!.. Помоги мне!!!» ("Xardas!.. Help me!!!"; the same final screen, checked against the frames of both runs). midp-rt redraws the loading progress bar more often (frames 7–14 each hash separately) while FreeJ2ME-plus coalesces the repaints — 17 versus 7 unique states for an identical trajectory. This is a known limitation of the soft metric: the state counter is sensitive to animation granularity. With `--state-tol 10` the pair converges to AGREE.
 
-² **Silent Storm — the harness caught a real defect in the reference emulator.** FreeJ2ME-plus gets stuck on the Nival splash forever: its MMAPI (`org.recompile.mobile.PlatformPlayer.getControl` — "player is either CLOSED or UNREALIZED") repeatedly throws `IllegalStateException` out of the game's sound code (`joybits.SilentStorm.c.a`), and the game never advances (1 state, 0 changes over 10.5 s). midp-rt, with its stub JSR-135, gets through: splash → title «Операция Silent Storm» → menu «Новая игра / [КАМПАНИЯ] / СЕТЕВАЯ ИГРА» → «Руководство». This is an argument for keeping a second, independent reference: the divergence pointed at fragility in FreeJ2ME-plus, and midp-rt is the correct one here.
+² **Silent Storm — the harness caught a real defect in the reference emulator.** FreeJ2ME-plus gets stuck on the Nival splash forever: its MMAPI (`org.recompile.mobile.PlatformPlayer.getControl` — "player is either CLOSED or UNREALIZED") repeatedly throws `IllegalStateException` out of the game's sound code (`joybits.SilentStorm.c.a`), and the game never advances (1 state, 0 changes over 10.5 s). midp-rt, with its stub JSR-135, gets through: splash → title «Операция Silent Storm» ("Operation Silent Storm") → menu «Новая игра / [КАМПАНИЯ] / СЕТЕВАЯ ИГРА» ("New game / [CAMPAIGN] / NETWORK GAME") → «Руководство» ("Manual"). This is an argument for keeping a second, independent reference: the divergence pointed at fragility in FreeJ2ME-plus, and midp-rt is the correct one here.
 
 ### Verdict
 
@@ -126,9 +126,9 @@ Windows were opened on screen (KDE Wayland/XWayland); input was scripted through
 
 | jar | path | result |
 |---|---|---|
-| Allods | menu (◄►/select) → «Новая игра» → intro → **gameplay screen** (forest, road, character) | OK, exit 0, no exceptions |
-| Gothic 3 | «Включить звук?» → menu → «Старт» → Xardas intro dialogue (multi-page) → **gameplay** (house, HUD, character turns with the arrow keys) | OK after the fix¹, exit 0 |
-| Liftboy | «Звук вкл.?» (soft ✓) → menu «Начать игру» → «Вступление» → **the hotel scene** (tutorial, dialogue pages through) | OK, exit 0, no exceptions |
+| Allods | menu (◄►/select) → «Новая игра» ("New game") → intro → **gameplay screen** (forest, road, character) | OK, exit 0, no exceptions |
+| Gothic 3 | «Включить звук?» ("Enable sound?") → menu → «Старт» ("Start") → Xardas intro dialogue (multi-page) → **gameplay** (house, HUD, character turns with the arrow keys) | OK after the fix¹, exit 0 |
+| Liftboy | «Звук вкл.?» ("Sound on?", soft ✓) → menu «Начать игру» ("Start game") → «Вступление» ("Introduction") → **the hotel scene** (tutorial, dialogue pages through) | OK, exit 0, no exceptions |
 
 ¹ **A windowed-mode defect in midp-rt was found and fixed.** GameCanvas games (Gothic 3) showed a grey window forever while the headless renderer worked. Root cause: `SwingDisplayComponent.getGraphicsSurface()` returned `null` until the first `repaintRequest`, so `GameCanvas.flushGraphics` → `J2SEDeviceDisplay.flushGraphics` silently dropped every frame of a fullscreen game. The fork had already fixed the same class of defect on the headless side (`NoUiDisplayComponent.getGraphicsSurface`, lazy surface creation); the fix was mirrored into the Swing component (repository arlecchino-midp-rt). After the fix: the fork's smoke test is OK (frames bit-for-bit, input arrives) and Gothic 3 plays through to gameplay in a window.
 
@@ -171,7 +171,7 @@ run_headless_midp_rt(jar, out, max_frames=30, frame_period_ms=100,
 
 ### Interpretation notes (these prevent false alarms)
 
-- Visual spot-check of the frames: GOTHIC-3 — frame plus the «Включить звук?» dialogue; Liftboy — title screen plus «Звук вкл.?»; Allods — the Nival splash (and with an input script of 2 × FIRE it reaches the gameplay screen — see the fork smoke test and the difftest below).
+- Visual spot-check of the frames: GOTHIC-3 — frame plus the «Включить звук?» ("Enable sound?") dialogue; Liftboy — title screen plus «Звук вкл.?» ("Sound on?"); Allods — the Nival splash (and with an input script of 2 × FIRE it reaches the gameplay screen — see the fork smoke test and the difftest below).
 - **"unique states = 1" (Allods, cyber_blood) is not a defect** — it is a static splash during the first 3 seconds. Likewise, the 2 blank frames of Elven Chronicles are start-up before the first draw.
 - **`RecordStoreNotFoundException` on that jar is not a crash** — it is the normal save probe on first launch (`openRecordStore(..., false)` against an empty store).
 - No comparison against the Block A FreeJ2ME engine was made here (a different task); this is a smoke test of midp-rt specifically.

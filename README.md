@@ -71,14 +71,22 @@ arlecchino difftest  <orig.jar> [rebuilt.jar] [--input SCRIPT] [-o OUT]
                      [--boot-wait S] [-W 240] [-H 320]
                      [--shift-tol N] [--jaccard-margin F] [--no-baseline]
                      [--fixed-clock]
+arlecchino ai-fix    [OUT] [--dry-run] [--attempts 3] [--max-classes N] [--class REL]…
+                     [--provider anthropic|openai|claude-code] [--model M]
+                     [--base-url URL] [--no-semantic-gate] [--no-cache] [-y]
+arlecchino port-rust [OUT] [--src DIR] [--crate-dir DIR] [--crate-name N]
+                     [--map FILE.map]… [--api TABLE] [--classpath CP]
+                     [--jrt DIR] [--strict] [--report]
+arlecchino trace-diff <ref-trace> <port-trace> [--drop-ids 3,4] [--drop-unreferenced]
+arlecchino frame-diff <ref-frames> <port-frames> [--offset N] [--diff-dir DIR] [--show N]
 ```
 
 `arlecchino <jar> …` is shorthand for `arlecchino decompile <jar> …` (back-compat).
 
 ### `setup` — get the engines + emulator
 
-Downloads **Vineflower, CFR, Procyon, jadx** (plus **JD-Core, Jode, Fernflower and
-Dava**) from their GitHub releases and builds or fetches **FreeJ2ME** into
+Downloads **Vineflower, CFR, Procyon, jadx** (plus **JD-Core, Jode, Fernflower,
+Dava** and both editions of **Sporeflower**) from their GitHub releases and builds or fetches **FreeJ2ME** into
 `~/.arlecchino/engines/`. It also downloads **ASM** (`org.ow2.asm`, BSD-3-Clause) from
 Maven Central into `~/.arlecchino/engines/asm/` and compiles the bytecode
 member-renamer helper against it.
@@ -103,10 +111,23 @@ shift the headline metric.
 | Procyon | `v0.6.0` | `procyon-decompiler-0.6.0.jar` | `ARLECCHINO_PROCYON_VERSION` |
 | jadx | `v1.5.5` | `jadx-1.5.5.zip` (`bin/jadx`) | `ARLECCHINO_JADX_VERSION` |
 | JD-Core | `jd-cli-1.3.0-beta-1` | `jd-cli-…-dist.zip` | `ARLECCHINO_JD_CLI_VERSION` |
+| Sporeflower | `v2026.11.08.40.1` | `sporeflower-<os>-<arch>.tar.gz` (native binary) | `ARLECCHINO_SPOREFLOWER_VERSION` |
 | ASM | `9.7` | Maven Central | `ARLECCHINO_ASM_VERSION` |
 | FreeJ2ME-plus | `1.52` | `freej2me-v1.52.zip` (`freej2me.jar` + `freej2me-lr.jar`) | `ARLECCHINO_FREEJ2ME_PLUS_VERSION` |
 
-Jode, Fernflower and Dava (Soot) are pinned by construction — they are single direct
+[Sporeflower](https://github.com/hourianto/sporeflower) is a decompiler built for J2ME
+(Apache-2.0). Its current edition is a native binary with its own CLDC/MIDP/vendor API
+declarations; `setup` unpacks the build for the host into
+`~/.arlecchino/engines/sporeflower/` (the `.tar.gz` goes through the system `tar`). Its
+earlier Java edition, a Vineflower fork now on upstream's `legacy` branch, is fetched as
+`sporeflower-legacy.jar` from v2026.11.03.38.1, the last release that shipped a jar.
+Both come after the other engines in the default config, so ties keep going to those.
+The native edition moves default-package classes into a `defaultpkg` package when the
+jar also has named ones, and renames members it considers captured in source to
+`field_N` / `method_N`; the `sporeflower` normalizer moves the classes back and restores
+the jar's member names from its Tiny map, so its classes merge with the other engines'.
+
+Jode, Fernflower, Dava (Soot) and the Sporeflower jar are pinned by construction — they are single direct
 downloads whose version is part of the URL, so they have no ENV override. jd-cli's
 newest release is a beta; the pin freezes the one this port was measured against rather
 than following wherever `releases/latest` happens to point.
@@ -323,6 +344,96 @@ because the replay is done by the runtime itself rather than by a libretro joypa
   reinterpreted when run through midp-rt — use the symbolic names in any script meant
   for both engines.
 
+### `ai-fix` — optional model-assisted repair of the residue
+
+**Off by default; runs only when invoked, and sends code to a model.** It works on the
+output of a previous `decompile` run (`OUT`, default `arlecchino_out`) and touches only
+the classes that still fail to compile after best-of and autofix. For each one the
+model gets the javac errors, the merged variant, the *diverging regions* of every other
+engine's variant, the members and failing methods of the original bytecode, and the
+signatures of the in-jar classes the class refers to.
+
+A reply is accepted only when all of these hold — otherwise it is rejected and the new
+errors (or the drifting methods) are fed back, up to `--attempts` times:
+
+1. the class compiles with zero errors, isolated, against the original jar;
+2. it declares the same package and top-level type;
+3. if `javap` is available, the semantic round-trip gate (the `--semdiff`
+   normalisation) finds no method whose call / field / `new` reference set drifted
+   from the original bytecode — so a class cannot be "fixed" by deleting code
+   (`--no-semantic-gate` switches this off);
+4. after all substitutions the whole merged tree has no more errors than before;
+   otherwise accepted classes are reverted.
+
+Everything lands in `OUT/ai_fix/`: `report.md` and `summary.json` (failing classes,
+isolated and whole-tree errors before → after), `journal.jsonl` (every attempt and why
+it was accepted or rejected), `attempts/` (every candidate), `before/` (the replaced
+text), `prompts/` and the response `cache/`. `--dry-run` writes the prompts and sends
+nothing.
+
+The provider is the Anthropic Messages API by default (`ANTHROPIC_API_KEY`), or any
+OpenAI-compatible endpoint with `--provider openai --base-url …` — e.g. a local server,
+so the code never leaves the machine. Before sending to a remote endpoint the command
+warns and asks for confirmation (`-y` skips the question).
+
+If you have Claude Code installed and are logged in, it can be used instead of an API
+key: `--provider claude-code` (or `provider = "claude-code"` in the `[ai]` table, or
+`ARLECCHINO_AI_PROVIDER=claude-code`). Each request then runs
+`claude -p --output-format json` with the prompt on stdin, every tool disabled and no
+MCP servers, in safe mode (your own CLAUDE.md, hooks and plugins are not loaded) and
+an empty scratch directory, one request at a time. This uses the usage
+limits of your Claude Code subscription, shared with your other Claude Code sessions.
+Arlecchino only starts the program — it never reads Claude Code's settings or
+credentials. The program is `claude` from `PATH`, or `ARLECCHINO_CLAUDE_BIN` /
+`claude_bin = "…"`; `--model` is passed through (the CLI's own default otherwise),
+`timeout_secs` (default 600) bounds each call, and `claude_args = ["…"]` appends extra
+CLI arguments. The response cache and `--dry-run` behave as with the other providers.
+The same applies to `ai-rename` and `ai-annotate`.
+
+### `port-rust` — mechanical translation to Rust (experimental)
+
+Translates the merged tree of a previous `decompile` run (`OUT/merged`, or any Java
+tree with `--src`) into a Cargo crate (`OUT/rust` by default) on top of the `jrt`
+runtime crate (`jrt/` in this repository). `javac` attributes the tree first
+(`assets/JavacAstDump.java`, compiled once into `~/.arlecchino/helpers/port-rust`), so
+the generator knows the type of every expression and the target of every call: Java
+integer semantics, implicit widening, `switch` with fall-through, labelled jumps and
+`try`/`catch` come out exact. Platform calls are bound through a table
+(`assets/port-rust-api.tsv`, one line per MIDP/CLDC member; `--api` for another one).
+
+Names are kept, in Rust casing: class `GameEngine` → `game_engine::GameEngine`,
+`frameCounter` → `frame_counter`, static `maxLives` → `MAX_LIVES`; Rust keywords become
+raw identifiers. `--map` applies a name map in Sporeflower `.map` format (class, field,
+method and parameter names with `/* was … */` markers) while generating.
+
+Whatever is not translated (an API call the table lacks, a construct the generator does
+not handle yet) becomes a typed `jrt::todo_ai!` marker, so the crate still builds; the
+markers are listed in `residue.json` and counted in `report.txt` (`--report` prints
+it, `--strict` exits with status 1 if there is any). The crate has a `trace` binary
+that runs the game headless and writes a call trace in midp-rt's format, for a
+line-by-line comparison with the original jar under midp-rt (`arlecchino trace-diff`):
+
+```sh
+trace <res-dir> <trace-out> 240 320 <frames> [--ticks] [--inputs ticks.json] [--frames-dir DIR]
+```
+
+`--inputs` (or `--ticks`) runs it the way midp-rt's `Headless --ticks N --inputs F`
+runs the jar: the same tick scenario, events delivered on their tick before its frame
+is painted, the run stopping after N ticks. `--frames-dir` draws every frame with the
+software renderer `jrt::raster` and writes `frame_NNNN.png`, frame i being the screen
+after tick i, as midp-rt's `--frames-dir` does; `arlecchino frame-diff` then compares
+the two directories pixel by pixel (identical frames and pixels in percent, a box per
+differing frame, `--diff-dir` for pictures with the differing pixels in red).
+
+The renderer follows midp-rt, not an idealised MIDP: `fillRect`, rectangles and
+straight lines, `drawImage`/`drawRegion` (all transforms, anchors including midp-rt's
+`drawRegion` arithmetic), clip, translation and Java2D alpha blending are exact; slanted
+lines and triangles are approximate; arcs, round rectangles and text are not drawn (the
+`trace` binary prints how many such calls it skipped). The screen starts black; a
+mutable image starts transparent, keeps its colours premultiplied and is drawn without
+its alpha, as under midp-rt. `Font` metrics are a table measured
+under midp-rt (AWT fonts, so they hold for the machine they were measured on).
+
 ## GUI
 
 `arlecchino-gui` is a small desktop panel (built with eframe/egui, steam_dark theme).
@@ -523,8 +634,11 @@ reference game. See
 
 ```sh
 cargo build --release
-regress/run.sh                 # or: regress/run.sh /path/to/corpus
+ARLECCHINO_CORPUS=/path/to/corpus regress/run.sh   # or: regress/run.sh /path/to/corpus
 ```
+
+The corpus folder comes from the argument or, without one, from `ARLECCHINO_CORPUS`;
+with neither the script stops with a hint.
 
 Both numbers of the `RESULT merged:` line are compared (the run uses `--no-metrics`,
 which is not part of the gate), and a mismatch is a non-zero exit. The measurement uses

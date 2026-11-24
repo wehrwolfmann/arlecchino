@@ -1,24 +1,32 @@
 /*
- *  arlecchino-midp-rt: разбор CLI-флагов headless-захвата кадров.
+ *  arlecchino-midp-rt: parsing of the headless frame capture CLI flags.
  *
- *  Написан для форка arlecchino-midp-rt (2026), LGPL 2.1 — см. LICENSE/NOTICE
- *  в корне репозитория. База форка — MicroEmulator (barteo/microemu).
+ *  Written for the arlecchino-midp-rt fork (2026), LGPL 2.1 — see LICENSE/NOTICE
+ *  at the repository root. The fork is based on MicroEmulator (barteo/microemu).
  *
- *  Свои флаги (снимаются ДО передачи остатка в org.microemu.app.Common):
+ *  Our own flags (stripped BEFORE the rest is passed to org.microemu.app.Common):
  *
- *    --frames-dir DIR    включить захват: PNG-кадры + index.json в DIR
- *    --frames N          сколько кадров снять (по умолчанию 30)
- *    --period-ms MS      период между кадрами (по умолчанию 100)
- *    --boot-wait-ms MS   пауза после старта MIDlet до первого кадра (2000)
- *    --inputs FILE       JSON-скрипт ввода [{t_ms,key,action},...]
- *                        (формат difftest Arlecchino, docs/difftest_format.md)
- *    --rms DIR           file-backed RMS ПЛОСКО в DIR (расширение upstream
- *                        `--rms (file|memory)`: значение-путь = каталог)
+ *    --frames-dir DIR    enable capture: PNG frames + index.json in DIR
+ *    --frames N          how many frames to take (default 30)
+ *    --period-ms MS      period between frames (default 100)
+ *    --boot-wait-ms MS   pause after the MIDlet starts before the first frame (2000)
+ *    --inputs FILE       JSON input script [{t_ms,key,action},...]
+ *                        (Arlecchino difftest format, docs/difftest_format.md);
+ *                        with --ticks — events by tick [{tick,key,action},...]
+ *    --ticks N           deterministic mode: run exactly N ticks
+ *                        (frame boundaries, see org.microemu.TickInput) and exit;
+ *                        input is delivered synchronously on its tick, a frame
+ *                        (with --frames-dir) is taken on every tick,
+ *                        --frames/--period-ms/--boot-wait-ms have no effect
+ *    --tick-timeout-ms MS  watchdog for --ticks mode: exit with code 4 if
+ *                        no new tick arrived within MS ms of wall time (30000)
+ *    --rms DIR           file-backed RMS FLAT in DIR (extension of upstream
+ *                        `--rms (file|memory)`: a path value = the directory)
  *
- *  Плюс автостарт: если включён захват и последний аргумент — существующий
- *  .jar/.jad, MIDlet-1 достаётся из манифеста/джада и аргумент переписывается
- *  в class-name-инвокацию (--appclasspath jar [--propertiesjad jad] Class) —
- *  headless-Launcher без этого не репейнтится и кадры остаются пустыми.
+ *  Plus autostart: if capture is on and the last argument is an existing
+ *  .jar/.jad, MIDlet-1 is taken from the manifest/jad and the argument is rewritten
+ *  into a class-name invocation (--appclasspath jar [--propertiesjad jad] Class) —
+ *  without this the headless Launcher never repaints and the frames stay blank.
  */
 package org.microemu.app.headless;
 
@@ -45,21 +53,30 @@ public class CaptureOptions {
 
 	public File inputsFile;
 
+	/** Tick mode: how many ticks to run (0 = the normal wall-clock mode). */
+	public int ticks = 0;
+
+	public int tickTimeoutMs = 30000;
+
 	public File rmsDir;
 
-	/** Последняя цель запуска (jar/jad/класс) — попадает в index.json. */
+	/** The last launch target (jar/jad/class) — goes into index.json. */
 	public String target = "";
 
-	/** Остаток аргументов — передаётся в Common.initParams как есть. */
+	/** The remaining arguments — passed to Common.initParams as is. */
 	public List<String> runtimeArgs = new ArrayList<String>();
 
 	public boolean enabled() {
 		return framesDir != null;
 	}
 
+	public boolean tickMode() {
+		return ticks > 0;
+	}
+
 	public static final String USAGE = "headless capture: "
 			+ "[--frames-dir DIR] [--frames N] [--period-ms MS] [--boot-wait-ms MS] "
-			+ "[--inputs FILE] [--rms (file|memory|DIR)] [--no-instrument] "
+			+ "[--inputs FILE] [--ticks N] [--tick-timeout-ms MS] [--rms (file|memory|DIR)] [--no-instrument] "
 			+ "[--resizableDevice W H] (game.jar | game.jad | MIDletClass)";
 
 	public static CaptureOptions parse(String[] args) {
@@ -74,6 +91,13 @@ public class CaptureOptions {
 				o.periodMs = intValue(args, ++i, a);
 			} else if (a.equals("--boot-wait-ms")) {
 				o.bootWaitMs = intValue(args, ++i, a);
+			} else if (a.equals("--ticks")) {
+				o.ticks = intValue(args, ++i, a);
+				if (o.ticks < 1) {
+					throw new IllegalArgumentException("--ticks: a number >= 1 is expected\n" + USAGE);
+				}
+			} else if (a.equals("--tick-timeout-ms")) {
+				o.tickTimeoutMs = intValue(args, ++i, a);
 			} else if (a.equals("--inputs")) {
 				o.inputsFile = new File(value(args, ++i, a));
 			} else if (a.equals("--rms")) {
@@ -90,12 +114,12 @@ public class CaptureOptions {
 		}
 		if (o.frames < 1 || o.periodMs < 0 || o.bootWaitMs < 0) {
 			throw new IllegalArgumentException("--frames/--period-ms/--boot-wait-ms: "
-					+ "ожидаются неотрицательные числа (--frames >= 1)\n" + USAGE);
+					+ "non-negative numbers are expected (--frames >= 1)\n" + USAGE);
 		}
 		if (!o.runtimeArgs.isEmpty()) {
 			o.target = (String) o.runtimeArgs.get(o.runtimeArgs.size() - 1);
 		}
-		if (o.enabled()) {
+		if (o.enabled() || o.tickMode()) {
 			o.rewriteAutoStart();
 		}
 		return o;
@@ -103,7 +127,7 @@ public class CaptureOptions {
 
 	private static String value(String[] args, int i, String flag) {
 		if (i >= args.length) {
-			throw new IllegalArgumentException(flag + ": не хватает значения\n" + USAGE);
+			throw new IllegalArgumentException(flag + ": missing value\n" + USAGE);
 		}
 		return args[i];
 	}
@@ -112,12 +136,12 @@ public class CaptureOptions {
 		try {
 			return Integer.parseInt(value(args, i, flag));
 		} catch (NumberFormatException e) {
-			throw new IllegalArgumentException(flag + ": ожидается число, получено "
+			throw new IllegalArgumentException(flag + ": a number is expected, got "
 					+ args[i] + "\n" + USAGE);
 		}
 	}
 
-	// ─────────────────────── автостарт по MIDlet-1 ───────────────────────────
+	// ─────────────────────── autostart via MIDlet-1 ──────────────────────────
 	private void rewriteAutoStart() {
 		if (runtimeArgs.isEmpty()) {
 			return;
@@ -125,11 +149,11 @@ public class CaptureOptions {
 		String last = (String) runtimeArgs.get(runtimeArgs.size() - 1);
 		String lower = last.toLowerCase();
 		if (!lower.endsWith(".jar") && !lower.endsWith(".jad")) {
-			return; // уже класс — Common сам инстанцирует и стартует
+			return; // already a class — Common instantiates and starts it itself
 		}
 		File f = new File(last);
 		if (!f.isFile()) {
-			return; // Common выдаст свою ошибку «не найден»
+			return; // Common will report its own "not found" error
 		}
 		String cls = null;
 		File jar = f;
@@ -163,9 +187,9 @@ public class CaptureOptions {
 			cls = null;
 		}
 		if (cls == null) {
-			System.err.println("headless: MIDlet-1 не найден в " + last
-					+ " — останется Launcher-список (в headless он не репейнтится, "
-					+ "кадры будут пустыми)");
+			System.err.println("headless: MIDlet-1 not found in " + last
+					+ " — the Launcher list stays (in headless it never repaints, "
+					+ "so the frames will be blank)");
 			return;
 		}
 		runtimeArgs.remove(runtimeArgs.size() - 1);
@@ -178,7 +202,7 @@ public class CaptureOptions {
 		runtimeArgs.add(cls);
 	}
 
-	/** 'Имя, /icon.png, the.Class' -> 'the.Class' (или null). */
+	/** 'Name, /icon.png, the.Class' -> 'the.Class' (or null). */
 	static String midlet1Class(String entry) {
 		if (entry == null) {
 			return null;
@@ -190,7 +214,7 @@ public class CaptureOptions {
 		return parts[2].trim();
 	}
 
-	/** Минимальный парсер .jad/манифеста: 'Key: value' + строки-продолжения. */
+	/** A minimal .jad/manifest parser: 'Key: value' + continuation lines. */
 	static Map<String, String> foldManifest(File f) throws Exception {
 		Map<String, String> attrs = new HashMap<String, String>();
 		BufferedReader r = new BufferedReader(

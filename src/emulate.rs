@@ -27,9 +27,9 @@ pub fn find_freej2me(explicit: Option<&str>, root: Option<&Path>) -> Option<Path
     .find(|cand| cand.exists())
 }
 
-/// Найти jar LIBRETRO-фронтенда FreeJ2ME-plus (`freej2me-lr.jar`) — тот самый
-/// фронтенд на канале stdin/stdout, которым `diffrun` снимает кадры безголово
-/// (блок A). Ставится рядом с freej2me.jar командой `arlecchino setup`.
+/// Find the jar of the FreeJ2ME-plus LIBRETRO frontend (`freej2me-lr.jar`) — the very
+/// stdin/stdout-channel frontend `diffrun` uses to capture frames headless
+/// (block A). Installed next to freej2me.jar by `arlecchino setup`.
 pub fn find_freej2me_lr(explicit: Option<&str>, root: Option<&Path>) -> Option<PathBuf> {
     if let Some(e) = explicit {
         let p = PathBuf::from(e);

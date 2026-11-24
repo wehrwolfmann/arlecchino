@@ -1,10 +1,10 @@
 /*
- *  arlecchino-midp-rt: генератор одиночных тонов для Manager.playTone
- *  поверх javax.sound.midi (общий ленивый Synthesizer, нота на канале 16
- *  (индекс 15, не percussion), noteOff по таймеру длительности).
+ *  arlecchino-midp-rt: a single-tone generator for Manager.playTone
+ *  on top of javax.sound.midi (a shared lazy Synthesizer, the note on channel 16
+ *  (index 15, not percussion), noteOff by a duration timer).
  *
- *  Написан по публичной спецификации JSR-135 для форка arlecchino-midp-rt
- *  (2026), LGPL 2.1 — см. LICENSE/NOTICE в корне репозитория.
+ *  Written from the public JSR-135 specification for the arlecchino-midp-rt fork
+ *  (2026), LGPL 2.1 — see LICENSE/NOTICE at the repository root.
  */
 package org.microemu.media;
 
@@ -18,7 +18,7 @@ import javax.sound.midi.Synthesizer;
 
 public final class ToneGenerator {
 
-	/** Канал 15 — свободный немелодический (9 = percussion, его избегаем). */
+	/** Channel 15 is a free non-melodic one (9 = percussion, we avoid it). */
 	private static final int TONE_CHANNEL = 15;
 
 	private static Synthesizer synthesizer;

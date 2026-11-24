@@ -175,10 +175,11 @@ public abstract class Canvas extends Displayable
     	if (this.fullScreenMode != mode) {
     		this.fullScreenMode = mode;
     		
-    		if (this instanceof GameCanvas) {
-    			width = -1;
-    			height = -1;
-    		}
+      // arlecchino-midp-rt fork: upstream reset the remembered size
+      // only for GameCanvas; a plain Canvas that asked getWidth/getHeight
+      // before setFullScreenMode saw the previous mode's size until it was shown
+    		width = -1;
+    		height = -1;
     		
     		if (currentDisplay != null) {
     			sizeChanged(currentDisplay);

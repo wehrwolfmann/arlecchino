@@ -1,12 +1,12 @@
 /*
- *  arlecchino-midp-rt: реальный Player JSR-135 для сэмплированного звука
- *  (WAV/AU/AIFF — всё, что читает javax.sound.sampled) поверх Clip.
- *  Громкость VolumeControl — через FloatControl MASTER_GAIN (перевод
- *  уровня 0..100 в децибелы), mute — через BooleanControl MUTE с
- *  fallback'ом на gain.
+ *  arlecchino-midp-rt: a real JSR-135 Player for sampled sound
+ *  (WAV/AU/AIFF — anything javax.sound.sampled reads) on top of Clip.
+ *  VolumeControl volume goes through the MASTER_GAIN FloatControl (converting
+ *  the 0..100 level to decibels), mute through the MUTE BooleanControl with
+ *  a fallback to gain.
  *
- *  Написан по публичной спецификации JSR-135 для форка arlecchino-midp-rt
- *  (2026), LGPL 2.1 — см. LICENSE/NOTICE в корне репозитория.
+ *  Written from the public JSR-135 specification for the arlecchino-midp-rt fork
+ *  (2026), LGPL 2.1 — see LICENSE/NOTICE at the repository root.
  */
 package org.microemu.media;
 
@@ -32,7 +32,7 @@ public class SampledPlayer extends AbstractPlayer {
 
 	private Clip clip;
 
-	/** start() вызван и конец носителя ещё не достигнут. */
+	/** start() was called and the end of the media has not been reached yet. */
 	private volatile boolean playing = false;
 
 	public SampledPlayer(byte[] data, String contentType) {
@@ -41,7 +41,7 @@ public class SampledPlayer extends AbstractPlayer {
 	}
 
 	protected void doRealize() throws MediaException {
-		// формат проверяется здесь, само устройство берётся в prefetch
+		// the format is checked here, the device itself is acquired in prefetch
 		try {
 			AudioInputStream probe = AudioSystem.getAudioInputStream(new ByteArrayInputStream(data));
 			probe.close();
@@ -81,7 +81,7 @@ public class SampledPlayer extends AbstractPlayer {
 	}
 
 	protected void doStart() throws MediaException {
-		// после конца носителя — заново с начала
+		// after the end of the media — start over from the beginning
 		if (clip.getFramePosition() >= clip.getFrameLength()) {
 			clip.setFramePosition(0);
 		}
@@ -89,7 +89,7 @@ public class SampledPlayer extends AbstractPlayer {
 		if (loopCount < 0) {
 			clip.loop(Clip.LOOP_CONTINUOUSLY);
 		} else if (loopCount > 1) {
-			// MMAPI: count воспроизведений = (count - 1) повторов Clip'а
+			// MMAPI: count plays = (count - 1) Clip loops
 			clip.loop(loopCount - 1);
 		} else {
 			clip.start();

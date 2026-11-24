@@ -21,9 +21,10 @@
 //!   args   = ["{jar}", "{out}"]
 //!   sources_subdir = ""       # where the .java land under {out} ("sources" for jadx,
 //!                             #   "dava/src" for the Soot/Dava back-end)
-//!   normalize = "none"        # "none" | "jadx" | "unjar"
+//!   normalize = "none"        # "none" | "jadx" | "unjar" | "sporeflower"
 //!                             #   "unjar" extracts .java out of any .jar an engine
-//!                             #   emits under {out} (Fernflower packs jar->jar)
+//!                             #   emits under {out} (Fernflower packs jar->jar);
+//!                             #   "sporeflower" un-wraps its `defaultpkg` package
 //!
 //! Substitution tokens available in args: {jar} {out} {java} {path}.
 

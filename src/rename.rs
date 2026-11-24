@@ -83,6 +83,24 @@ pub fn helper_compiled(root: Option<&Path>) -> bool {
         .exists()
 }
 
+/// The materialised helper was compiled from a different source than the one embedded
+/// in this binary (an older install, or a newer one from another checkout).
+pub fn helper_stale(root: Option<&Path>) -> bool {
+    let src = asm_dir(root).join(format!("{HELPER_CLASS}.java"));
+    std::fs::read_to_string(src).map(|s| s != HELPER_SOURCE).unwrap_or(true)
+}
+
+/// A helper built from another version of the source would plan other renames than
+/// this binary documents; rebuild it in place (one javac call, only when it differs).
+fn refresh_helper(root: Option<&Path>) {
+    // one rebuild at a time per process (parallel tests, parallel jars)
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !asm_jars(root).is_empty() && (!helper_compiled(root) || helper_stale(root)) {
+        println!("   member-rename: helper out of date — {}", compile_helper(root));
+    }
+}
+
 pub fn available(root: Option<&Path>) -> bool {
     !asm_jars(root).is_empty() && helper_compiled(root)
 }
@@ -97,7 +115,15 @@ pub fn compile_helper(root: Option<&Path>) -> String {
     if std::fs::create_dir_all(&dir).is_err() {
         return format!("FAILED (cannot create {})", dir.display());
     }
-    let src = dir.join(format!("{HELPER_CLASS}.java"));
+    // javac needs the file named after the class, so compile from a private
+    // subdirectory and publish the source next to the classes only once they are
+    // built: the published source is what `helper_stale` compares against, and it
+    // must never claim classes that are still being written.
+    static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let src_dir = dir.join(format!("_src.{}.{seq}", std::process::id()));
+    let _ = std::fs::create_dir_all(&src_dir);
+    let src = src_dir.join(format!("{HELPER_CLASS}.java"));
     if std::fs::write(&src, HELPER_SOURCE).is_err() {
         return format!("FAILED (cannot write helper source: {})", src.display());
     }
@@ -118,7 +144,10 @@ pub fn compile_helper(root: Option<&Path>) -> String {
         src.to_string_lossy().into_owned(),
     ];
     let r = util::run_capture_in(&argv, None, Some(&outdir));
-    if r.status != Some(0) || !helper_compiled(root) {
+    let published = dir.join(format!("{HELPER_CLASS}.java"));
+    let ok = r.status == Some(0) && helper_compiled(root) && std::fs::rename(&src, &published).is_ok();
+    let _ = std::fs::remove_dir_all(&src_dir);
+    if !ok {
         let tail: String = r.stderr.chars().rev().take(500).collect::<String>().chars().rev().collect();
         return format!("FAILED javac: {tail}");
     }
@@ -263,7 +292,7 @@ pub fn has_member_collisions(jar: &Path) -> bool {
 
 /// The classpath the renamer's reflection RESOLVER sees (4th argv to the helper).
 ///
-/// Always prepends the generated clean-room MIDP/CLDC stub (Stage Э8) when present, so
+/// Always prepends the generated clean-room MIDP/CLDC stub (Stage E8) when present, so
 /// `jdkResolvable` / `jdkDeclaresMethod` resolve `javax.microedition.*` contracts
 /// PRECISELY and lock genuine framework callbacks.  The caller's `framework_cp` (e.g.
 /// an auto FreeJ2ME jar that is also used for compilation) is appended too,
@@ -303,6 +332,7 @@ pub fn run_renamer(
     framework_cp: Option<&str>,
     flatten: bool,
 ) -> Option<PathBuf> {
+    refresh_helper(root);
     let jars = asm_jars(root);
     if jars.is_empty() || !helper_compiled(root) {
         println!(
@@ -345,6 +375,32 @@ pub fn run_renamer(
     Some(out_jar.to_path_buf())
 }
 
+/// Run the helper on a jar the pure pre-check found clean.  `Some` when it planned
+/// renames (type shadows), `None` when it planned none or failed — the caller then uses
+/// the original jar, so a collision-free, shadow-free jar is never rewritten.
+fn rename_if_needed(
+    jar: &Path,
+    workdir: &Path,
+    root: Option<&Path>,
+    framework_cp: Option<&str>,
+) -> Option<(PathBuf, Option<PathBuf>)> {
+    let stem = jar.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let out_jar = workdir.join(format!("{stem}.renamed.jar"));
+    let mapping = workdir.join(format!("{stem}.rename-map.txt"));
+    let res = run_renamer(jar, &out_jar, &mapping, root, framework_cp, false)?;
+    let planned = std::fs::read_to_string(&mapping).map(|t| t.contains("->")).unwrap_or(false);
+    if !planned {
+        let _ = std::fs::remove_file(&out_jar);
+        let _ = std::fs::remove_file(&mapping);
+        return None;
+    }
+    println!(
+        "   member-rename: no duplicate members, but fields shadow type names; using the \
+         renamed jar."
+    );
+    Some((res, Some(mapping)))
+}
+
 /// Decide-and-run the rename pass.  Returns (jar_to_use, mapping_path_or_None).
 ///
 /// `flatten` (OPT-IN, `--flatten-packages`): also move every in-jar type into the
@@ -365,12 +421,22 @@ pub fn maybe_rename(
     }
 
     let collisions = has_member_collisions(jar);
+    refresh_helper(root);
     let avail = available(root);
 
     if mode == "auto" {
         // --flatten-packages needs the ASM pass to run even on a collision-free jar
         // (the cross-package fix is independent of member collisions).
         if !collisions && !flatten {
+            // The pure pre-check sees only duplicate members.  A field that shadows a
+            // type name (`d.b()` vs. a field `d`) is just as fatal in source, but
+            // finding it takes the helper's whole-jar view — so ask the helper, and
+            // keep the original jar when it plans nothing.
+            if avail {
+                if let Some(r) = rename_if_needed(jar, workdir, root, framework_cp) {
+                    return r;
+                }
+            }
             println!(
                 "   member-rename: no source-illegal member collisions detected — \
                  skipping (not needed)."

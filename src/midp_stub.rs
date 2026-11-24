@@ -1,4 +1,4 @@
-//! Clean-room MIDP 2.0 / CLDC 1.1 API stub generator (Stage Э8).
+//! Clean-room MIDP 2.0 / CLDC 1.1 API stub generator (Stage E8).
 //!
 //! The bytecode member renamer (`assets/MemberRenamer.java`) decides whether an in-jar
 //! method fulfils an EXTERNAL contract — i.e. overrides a framework callback such as
@@ -12,7 +12,7 @@
 //! them, so without a stub the renamer falls back to the hardcoded `MIDP_CALLBACKS`
 //! denylist.
 //!
-//! Stage Э8 makes the precise path ALWAYS available: we GENERATE — not vendor — a
+//! Stage E8 makes the precise path ALWAYS available: we GENERATE — not vendor — a
 //! minimal clean-room stub of the public MIDP 2.0 (JSR-118) / CLDC 1.1 (JSR-139) ABI
 //! (public class/interface + method SIGNATURES only, empty/throwing bodies; no
 //! implementation copied, no third-party jar downloaded) and `javac` it into
@@ -1010,7 +1010,7 @@ fn pack_classes(classes: &[PathBuf], cls_root: &Path, out_jar: &Path) -> Result<
 /// `setup` generates the stub up front, but the renamer must not depend on that having
 /// happened: a first run on a fresh machine still gets the PRECISE resolver path.
 /// Returns `None` when the stub cannot be produced (no `javac`) — the renamer then uses
-/// its `MIDP_CALLBACKS` denylist, exactly as before Stage Э8.
+/// its `MIDP_CALLBACKS` denylist, exactly as before Stage E8.
 pub fn ensure_stub() -> Option<PathBuf> {
     if let Some(p) = stub_jar() {
         return Some(p);

@@ -40,6 +40,27 @@ enum Cmd {
     Run(RunArgs),
     /// behavioural diff: run orig + rebuilt jars headless, compare screen-state sequences and RMS (stage A5)
     Difftest(DifftestArgs),
+    /// OPTIONAL: model-assisted repair of classes still failing after the merge (sends code to the configured model)
+    #[command(name = "ai-fix")]
+    AiFix(crate::aifix::AiFixArgs),
+    /// OPTIONAL: model-proposed names for obfuscated classes/members, applied to the bytecode (sends code to the configured model)
+    #[command(name = "ai-rename")]
+    AiRename(crate::ai::AiRenameArgs),
+    /// OPTIONAL: model-written Javadoc for classes and non-obvious methods, inserted into a copy of the source (sends code to the configured model)
+    #[command(name = "ai-annotate")]
+    AiAnnotate(crate::ai::AiAnnotateArgs),
+    /// apply a hand-written name map (.map, Sporeflower format) to the bytecode: classes, members, parameters, locals (no model)
+    #[command(name = "apply-names")]
+    ApplyNames(crate::ai::ApplyNamesArgs),
+    /// EXPERIMENTAL: mechanical translation of the merged Java tree into a Rust crate on the jrt runtime
+    #[command(name = "port-rust")]
+    PortRust(crate::portrust::PortRustArgs),
+    /// compare a midp-rt call trace with the trace of a port-rust crate (canonicalised, frame-folded)
+    #[command(name = "trace-diff")]
+    TraceDiff(crate::portrust::TraceDiffArgs),
+    /// compare midp-rt's captured frames with a port-rust crate's frames pixel by pixel
+    #[command(name = "frame-diff")]
+    FrameDiff(crate::portrust::frames::FrameDiffArgs),
 }
 
 #[derive(Args)]
@@ -186,7 +207,7 @@ struct DecompileArgs {
 struct SetupArgs {
     #[arg(long = "engines-root")]
     engines_root: Option<String>,
-    /// comma list: vineflower,cfr,procyon,jadx,jd-core,jode,fernflower,dava,asm,midp-stub,midp-rt
+    /// comma list: vineflower,cfr,procyon,jadx,jd-core,sporeflower,jode,fernflower,dava,sporeflower-legacy,asm,midp-stub,midp-rt
     #[arg(long = "only")]
     only: Option<String>,
     #[arg(long = "no-freej2me")]
@@ -511,15 +532,15 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
         }
     }
 
-    // ── семантический round-trip (по желанию, по умолчанию выключен) ────────
+    // ── semantic round-trip (optional, off by default) ──────────────────────
     let mut semdiff_report: Option<crate::semdiff::SemdiffReport> = None;
     if let (true, Some(md), false) =
         (a.semdiff || a.reject_semantic_drift, merged_dir.as_ref(), a.no_roundtrip)
     {
         println!("\n== SEMANTIC ROUND-TRIP (semdiff) ==");
         let classes_dir = md.join("_classes");
-        // пропускаем классы, которые не пересобрались (их .class — засеянный
-        // ОРИГИНАЛ, самосравнение было бы пустым и обманчивым)
+        // skip classes that did not recompile (their .class is the seeded
+        // ORIGINAL, so a self-comparison would be empty and misleading)
         let skip: BTreeSet<String> = rt
             .as_ref()
             .map(|r| {
@@ -904,8 +925,8 @@ fn cmd_setup(a: &SetupArgs) -> i32 {
     for (k, v) in &res {
         println!("  {k:12} {v}");
     }
-    // `--only` называет ровно те движки, что нужны: FreeJ2ME он тоже фильтрует,
-    // иначе `setup --only midp-rt` без спроса лезет в сеть за эмулятором.
+    // `--only` names exactly the engines that are needed: it filters FreeJ2ME too,
+    // otherwise `setup --only midp-rt` would go to the network for the emulator unasked.
     let want_freej2me = only
         .as_deref()
         .map(|o| o.iter().any(|x| x == "freej2me"))
@@ -955,7 +976,8 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
     // backward-compat: `arlecchino foo.jar ...` == `arlecchino decompile foo.jar ...`
     if let Some(first) = argv.first() {
         if !first.starts_with('-')
-            && !["decompile", "setup", "emulate", "run", "difftest"].contains(&first.as_str())
+            && !["decompile", "setup", "emulate", "run", "difftest", "ai-fix", "ai-rename", "ai-annotate", "apply-names", "port-rust", "trace-diff", "frame-diff"]
+                .contains(&first.as_str())
         {
             argv.insert(0, "decompile".into());
         }
@@ -978,6 +1000,13 @@ pub fn main(argv: Option<Vec<String>>) -> i32 {
         Some(Cmd::Emulate(a)) => cmd_emulate(&a),
         Some(Cmd::Run(a)) => cmd_run(&a),
         Some(Cmd::Difftest(a)) => cmd_difftest(&a),
+        Some(Cmd::AiFix(a)) => crate::aifix::cmd_ai_fix(&a),
+        Some(Cmd::AiRename(a)) => crate::ai::cmd_ai_rename(&a),
+        Some(Cmd::AiAnnotate(a)) => crate::ai::cmd_ai_annotate(&a),
+        Some(Cmd::ApplyNames(a)) => crate::ai::cmd_apply_names(&a),
+        Some(Cmd::PortRust(a)) => crate::portrust::cmd_port_rust(&a),
+        Some(Cmd::TraceDiff(a)) => crate::portrust::cmd_trace_diff(&a),
+        Some(Cmd::FrameDiff(a)) => crate::portrust::frames::cmd_frame_diff(&a),
         None => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
             let _ = cmd.print_help();
@@ -1135,11 +1164,11 @@ fn cmd_run(a: &RunArgs) -> i32 {
 }
 
 // ───────────────────────────── difftest ─────────────────────────────────────
-/// Этап A5 — стенд поведенческого сравнения (PLAN_runtime.md, блок A).
+/// Stage A5 — the behavioural comparison harness (PLAN_runtime.md, block A).
 ///
-/// Обычный режим: откалибровать шум на ОРИГИНАЛЕ (прогнать его дважды), прогнать
-/// пересобранный jar, сравнить последовательности состояний экрана + RMS, вердикт.
-/// `--calibrate`: только оригинал, дважды — печатает базу шума вместо вердикта.
+/// Normal mode: calibrate the noise on the ORIGINAL (run it twice), run the
+/// rebuilt jar, compare the sequences of screen states + RMS, give a verdict.
+/// `--calibrate`: only the original, twice — prints the noise baseline instead of a verdict.
 fn cmd_difftest(a: &DifftestArgs) -> i32 {
     use crate::difftest as dt;
     let orig = util::absolutize(Path::new(&a.orig));

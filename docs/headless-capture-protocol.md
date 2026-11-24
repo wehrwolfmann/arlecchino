@@ -55,7 +55,7 @@ header** — magic `0xFE`, `w:2`, `h:2`, `rotation:1`, `vibration:8`, `restart:1
    encoding named in the header (`Shift_JIS` / `EUC_KR`). The restart frame carries a
    full-LCD payload that must be drained before relaunching, or the pipe desynchronises.
 2. **Non-ASCII paths.** The front-end runs the jar path through
-   `URLDecoder.decode(path, textEncoding)`. A Cyrillic path (`~/Загрузки/…`) turns to
+   `URLDecoder.decode(path, textEncoding)`. A non-ASCII path (e.g. `~/Téléchargements/…`) turns to
    mush and the emulator reports "File not found". Cure: an ASCII symlink inside the
    output directory.
 3. **stdout noise.** A MIDlet may print to `System.out`. The reader therefore scans

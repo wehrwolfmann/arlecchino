@@ -1,0 +1,23 @@
+[package]
+name = "arlecchino-jrt"
+version = "0.1.0"
+edition = "2021"
+description = "Runtime for Java ME code translated to Rust by `arlecchino port-rust`."
+authors = ["Wehrwolfmann"]
+license = "Apache-2.0"
+repository = "https://github.com/wehrwolfmann/arlecchino"
+publish = false
+
+[lib]
+name = "jrt"
+path = "src/lib.rs"
+
+[dependencies]
+# JVM integer semantics, java.util.Random and Data{Input,Output}Stream (CC0-1.0,
+# sushi-shi/j2me-preservation-kit). Pinned: translated code relies on them matching
+# a real JVM bit for bit.
+j2me-jvm = { git = "https://github.com/sushi-shi/j2me-preservation-kit", rev = "cf241af1de14435fc95476f55254706f17a52b0a" }
+# PNG decoding and frame output of the software renderer (MIT OR Apache-2.0).
+png = "0.18"
+# tick scenarios (midp-rt `--inputs`)
+serde_json = "1"

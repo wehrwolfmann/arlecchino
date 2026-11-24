@@ -85,6 +85,7 @@ public final class MemberRenamer {
     final List<String> mappingLines = new ArrayList<>();
     int typeShadowCount = 0;   // fields renamed because they shadowed an in-jar type
     int constShadowCount = 0;  // interface constants renamed (inherited-shadow)
+    int keywordCount = 0;      // members whose name is not a Java identifier (`do`, `if`)
 
     static String mkey(String owner, String name, String desc) { return owner + "#" + name + " " + desc; }
 
@@ -94,7 +95,7 @@ public final class MemberRenamer {
     // we LOCK exactly those and nothing more.
     ClassLoader resolver = MemberRenamer.class.getClassLoader();
 
-    // OPT-IN package flattening (Stage Э9): when on, every in-jar type is moved into
+    // OPT-IN package flattening (Stage E9): when on, every in-jar type is moved into
     // the DEFAULT (unnamed) package so a named-package class can name what used to be a
     // default-package type.  Off by default — the 5th argv "flatten" turns it on.
     boolean flattenPackages = false;
@@ -135,6 +136,7 @@ public final class MemberRenamer {
         buildVirtualGroups();
         planMethodRenames();
         planFieldRenames();
+        planKeywordRenames();
         planTypeShadowFieldRenames();
         planConstInterfaceShadowRenames();
         if (flattenPackages) planTypeFlatten();
@@ -145,6 +147,7 @@ public final class MemberRenamer {
                 + " fieldRenames=" + fieldRenames.size()
                 + " (typeShadowFields=" + typeShadowCount
                 + " constIfaceShadow=" + constShadowCount
+                + " keyword=" + keywordCount
                 + (flattenPackages ? " flattenedTypes=" + typeRemap.size() : "")
                 + ")");
     }
@@ -297,7 +300,7 @@ public final class MemberRenamer {
     // Well-known MIDP/CLDC + java.* callback signatures (name+full-descriptor) that an
     // in-jar class may override.  OFFLINE FALLBACK ONLY: used solely when an external
     // supertype cannot be resolved via reflection (i.e. no MIDP/CLDC stub on the
-    // resolver classpath).  Since Stage Э8 `arlecchino setup` GENERATES a clean-room
+    // resolver classpath).  Since Stage E8 `arlecchino setup` GENERATES a clean-room
     // MIDP 2.0/CLDC 1.1 stub and `installResolver` always puts it on the classpath,
     // step 1 below normally locks these PRECISELY and this list is never consulted; it
     // exists only to keep dispatch safe when the stub couldn't be built (no javac).
@@ -338,7 +341,7 @@ public final class MemberRenamer {
         }
         // 2) OFFLINE fallback ONLY for unresolvable externals: lock just the well-known
         //    callback signatures (so dispatch to a framework we can't see isn't broken).
-        //    With the Stage Э8 generated MIDP/CLDC stub on the resolver classpath this
+        //    With the Stage E8 generated MIDP/CLDC stub on the resolver classpath this
         //    branch is normally dead (step 1 resolved javax.microedition.* precisely);
         //    it triggers only when no stub could be built.  We do NOT blanket-lock every
         //    method — that would prevent fixing real return-type collisions (e.g.
@@ -518,6 +521,75 @@ public final class MemberRenamer {
         return s;
     }
 
+    // ---- plan renames of members whose name is not a Java identifier ----------
+    //
+    // ProGuard-style dictionaries hand out reserved words (`do`, `if`, `for`) and the
+    // JVM accepts any name, but Java source cannot spell them.  Every decompiler then
+    // invents its own replacement (`cfr_renamed_0`, `do_`, `_do`), so the classes of
+    // different engines no longer agree on the jar's API and the round-trip check sees
+    // a missing member.  Give such members ONE source-legal name here instead.  A method
+    // is renamed with its whole virtual group; a locked group (an external contract)
+    // keeps its name — no library declares a method called `do`.
+    static final Set<String> JAVA_RESERVED = new HashSet<>(Arrays.asList(
+            "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
+            "class", "const", "continue", "default", "do", "double", "else", "enum",
+            "extends", "final", "finally", "float", "for", "goto", "if", "implements",
+            "import", "instanceof", "int", "interface", "long", "native", "new",
+            "package", "private", "protected", "public", "return", "short", "static",
+            "strictfp", "super", "switch", "synchronized", "this", "throw", "throws",
+            "transient", "try", "void", "volatile", "while", "true", "false", "null",
+            "_"));
+
+    static boolean isSourceIdentifier(String name) {
+        if (name.isEmpty() || JAVA_RESERVED.contains(name)) return false;
+        if (!Character.isJavaIdentifierStart(name.charAt(0))) return false;
+        for (int i = 1; i < name.length(); i++)
+            if (!Character.isJavaIdentifierPart(name.charAt(i))) return false;
+        return true;
+    }
+
+    /** A source-legal base for a renamed non-identifier: keep the letters/digits that
+     *  are legal (so `do` stays recognisable as `do_<hash>`), else fall back to `m`/`f`. */
+    static String legalBase(String name, String fallback) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (b.length() == 0 ? Character.isJavaIdentifierStart(c) : Character.isJavaIdentifierPart(c))
+                b.append(c);
+        }
+        return b.length() == 0 ? fallback : b.toString();
+    }
+
+    void planKeywordRenames() {
+        for (Info info : classes.values()) {
+            Set<String> usedF = existingFieldNames(info);
+            for (FieldNode fn : info.node.fields) {
+                if (isSourceIdentifier(fn.name)) continue;
+                String k = mkey(info.name(), fn.name, fn.desc);
+                if (fieldRenames.containsKey(k)) continue;
+                String newName = uniqueName(legalBase(fn.name, "f"), fn.desc, usedF);
+                fieldRenames.put(k, newName);
+                usedF.add(newName);
+                keywordCount++;
+                mappingLines.add(info.name() + "." + fn.name + " " + fn.desc
+                        + " -> " + newName + "  (keyword)");
+            }
+        }
+        for (Info info : classes.values()) {
+            for (MethodNode mn : info.node.methods) {
+                if (isCtor(mn.name) || isSourceIdentifier(mn.name)) continue;
+                String k = mkey(info.name(), mn.name, mn.desc);
+                if (methodRenames.containsKey(k)) continue;  // already moved (overload / group)
+                if (groupLocked(k)) continue;                // external contract keeps it
+                Set<String> used = existingMethodNames(info);
+                String newName = uniqueName(legalBase(mn.name, "m"), mn.desc, used);
+                int before = methodRenames.size();
+                renameWholeGroup(k, newName);
+                keywordCount += methodRenames.size() - before;
+            }
+        }
+    }
+
     // ---- plan FIELD renames (field name shadows an in-jar TYPE name) ----------
     //
     // A second, distinct source-legality hazard from single-namespace obfuscation
@@ -532,11 +604,20 @@ public final class MemberRenamer {
     // cannot tell field-vs-type apart once shadowed). So we rename the offending
     // FIELD in bytecode, here, before decompiling.
     //
-    // Trigger (precise, minimal churn): rename field C.X only when (a) some in-jar
-    // type has simple name X, AND (b) C actually references that type's INTERNAL
-    // name somewhere in its bytecode (instructions, signatures, field/var types,
-    // annotations) — i.e. the shadow genuinely occurs. Fields whose name merely
-    // happens to equal a type never referenced in C are left untouched.
+    // Trigger (precise, minimal churn): rename field D.X when, in SOME in-jar class C
+    // that can see it (D itself, or a subclass/implementor of D — the field is
+    // inherited into C's member scope), (a) some in-jar type T has simple name X, AND
+    // (b) C actually names T:
+    //   * T != C: C references T's internal name anywhere in its bytecode
+    //     (instructions, signatures, field/var types, annotations);
+    //   * T == C (the self-name case, `class d { int d; }`): the declaration alone is
+    //     legal, but decompilers write C's own static members qualified, `d.b()`, and
+    //     that is `(this.d).b()` once the field is in scope.  So C.d is renamed when C
+    //     reaches a static member through its own name (GETSTATIC/PUTSTATIC/
+    //     INVOKESTATIC with owner C).
+    // Fields whose name merely happens to equal a type nobody in their scope names are
+    // left untouched.  The rename is applied at the DECLARING class; every access
+    // (whatever owner the call site names) is resolved to it in writeRenamed().
     void planTypeShadowFieldRenames() {
         // simple type name -> internal name, for in-jar types (default-package: equal)
         Map<String, String> typeBySimple = new HashMap<>();
@@ -547,24 +628,72 @@ public final class MemberRenamer {
             typeBySimple.putIfAbsent(simple, internal);
             if (internal.indexOf('/') < 0) typeBySimple.put(simple, internal);
         }
+        Map<String, Set<String>> usedBy = new HashMap<>();
         for (Info info : classes.values()) {
             Set<String> referenced = referencedInternalNames(info.node);
-            Set<String> used = existingFieldNames(info);
-            for (FieldNode fn : info.node.fields) {
-                String k = mkey(info.name(), fn.name, fn.desc);
-                if (fieldRenames.containsKey(k)) continue;  // already renamed (dup-name)
-                String internal = typeBySimple.get(fn.name);
+            boolean selfStatic = referencesOwnStatics(info.node);
+            for (String[] vf : visibleFields(info.name())) {
+                String declarer = vf[0], name = vf[1], desc = vf[2];
+                String k = mkey(declarer, name, desc);
+                if (fieldRenames.containsKey(k)) continue;  // already renamed
+                String internal = typeBySimple.get(name);
                 if (internal == null) continue;             // name isn't a type's simple name
-                if (internal.equals(info.name())) continue; // self-name field: `class j {int j;}` is legal in source
-                if (!referenced.contains(internal)) continue; // type not used by simple name here
-                String newName = uniqueName(fn.name, fn.desc, used);
+                boolean shadow = internal.equals(info.name())
+                        ? selfStatic                         // `d.b()` inside class d
+                        : referenced.contains(internal);     // type named where field is in scope
+                if (!shadow) continue;
+                Set<String> used = usedBy.computeIfAbsent(declarer,
+                        d -> existingFieldNames(classes.get(d)));
+                String newName = uniqueName(name, desc, used);
                 fieldRenames.put(k, newName);
                 used.add(newName);
                 typeShadowCount++;
-                mappingLines.add(info.name() + "." + fn.name + " " + fn.desc
+                mappingLines.add(declarer + "." + name + " " + desc
                         + " -> " + newName + "  (type-shadow)");
             }
         }
+    }
+
+    /** Fields in `cls`'s source scope: its own, plus the non-private ones inherited
+     *  from in-jar super classes and super interfaces.  Each entry is
+     *  {declaringClass, name, desc}; a name hidden by a nearer declaration is still
+     *  listed (renaming the farther one is harmless and keeps the walk simple). */
+    List<String[]> visibleFields(String cls) {
+        List<String[]> out = new ArrayList<>();
+        Deque<String> work = new ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        work.add(cls);
+        while (!work.isEmpty()) {
+            String s = work.poll();
+            if (s == null || !seen.add(s)) continue;
+            Info si = classes.get(s);
+            if (si == null) continue;
+            for (FieldNode fn : si.node.fields) {
+                if (!s.equals(cls) && isPrivate(fn.access)) continue;
+                out.add(new String[] { s, fn.name, fn.desc });
+            }
+            if (si.superName() != null) work.add(si.superName());
+            work.addAll(si.ifaces());
+        }
+        return out;
+    }
+
+    /** True if `cn` reaches a static member through its own name (a static field
+     *  read/write or static call with owner == cn) — the place a decompiler writes
+     *  `Self.member`. */
+    static boolean referencesOwnStatics(ClassNode cn) {
+        for (MethodNode mn : cn.methods) {
+            if (mn.instructions == null) continue;
+            for (AbstractInsnNode in : mn.instructions.toArray()) {
+                int op = in.getOpcode();
+                if (in instanceof FieldInsnNode
+                        && (op == Opcodes.GETSTATIC || op == Opcodes.PUTSTATIC)
+                        && ((FieldInsnNode) in).owner.equals(cn.name)) return true;
+                if (in instanceof MethodInsnNode && op == Opcodes.INVOKESTATIC
+                        && ((MethodInsnNode) in).owner.equals(cn.name)) return true;
+            }
+        }
+        return false;
     }
 
     // ---- plan FIELD renames (constant-interface field inherited into an
@@ -726,7 +855,7 @@ public final class MemberRenamer {
         return s.length() >= 8 ? s.substring(0, 8) : ("00000000" + s).substring(s.length());
     }
 
-    // ---- plan TYPE flatten (Stage Э9, OPT-IN) ---------------------------------
+    // ---- plan TYPE flatten (Stage E9, OPT-IN) ---------------------------------
     //
     // The renamer fixes member-level source-illegalities, but one class of error is
     // PACKAGE-level: a NAMED-package class (e.g. `Container.GameMIDlet`) that references
@@ -799,7 +928,7 @@ public final class MemberRenamer {
                 return name; // no indy in J2ME
             }
             @Override public String mapFieldName(String owner, String name, String descriptor) {
-                String nn = fieldRenames.get(mkey(owner, name, descriptor));
+                String nn = lookupField(owner, name, descriptor);
                 return nn != null ? nn : name;
             }
         };
@@ -913,6 +1042,32 @@ public final class MemberRenamer {
                 String nn = methodRenames.get(mkey(sup, name, desc));
                 if (nn != null) return nn;
             }
+        }
+        return null;
+    }
+
+    /**
+     * Resolve a field rename for an access site.  The owner a site names may be a
+     * subtype that only inherits the field, so resolve like the JVM does (JVMS 5.4.3.2):
+     * the owner's own declaration, then its super interfaces, then its super class —
+     * all in-jar.  The first class that declares name+desc decides (a nearer
+     * declaration hides a farther one, renamed or not).
+     */
+    String lookupField(String owner, String name, String desc) {
+        Deque<String> work = new ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        work.add(owner);
+        while (!work.isEmpty()) {
+            String s = work.poll();
+            if (s == null || !seen.add(s)) continue;
+            Info si = classes.get(s);
+            if (si == null) continue;
+            for (FieldNode fn : si.node.fields)
+                if (fn.name.equals(name) && fn.desc.equals(desc))
+                    return fieldRenames.get(mkey(s, name, desc));
+            // interfaces first, then the super class (BFS keeps the order per level)
+            work.addAll(si.ifaces());
+            if (si.superName() != null) work.add(si.superName());
         }
         return null;
     }

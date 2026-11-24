@@ -431,16 +431,25 @@ public class J2SEDeviceDisplay implements DeviceDisplayImpl
 	}
 
     public void flushGraphics(Image gameCanvasImage, int x, int y, int width, int height) {
-        // Форк arlecchino-midp-rt: вместо жёсткого каста к SwingDisplayComponent —
-        // общий интерфейс J2SEGraphicsSurfaceDisplayComponent (Swing + headless NoUi);
-        // upstream-каст в headless молча ронял поток игры ClassCastException'ом,
-        // и кадры GameCanvas-игр не доходили до listener'а
+        // arlecchino-midp-rt fork: instead of a hard cast to SwingDisplayComponent —
+        // the common interface J2SEGraphicsSurfaceDisplayComponent (Swing + headless NoUi);
+        // in headless the upstream cast silently killed the game thread with a ClassCastException,
+        // and the frames of GameCanvas games never reached the listener
         if (gameCanvasImage != null) {
             J2SEGraphicsSurfaceDisplayComponent displayComponent =
                     (J2SEGraphicsSurfaceDisplayComponent) context.getDisplayComponent();
             J2SEGraphicsSurface surface = displayComponent.getGraphicsSurface();
+            if (surface == null) {
+                org.microemu.TickInput.boundary();
+            }
             if (surface != null) {
                 synchronized (surface) {
+                    // arlecchino-midp-rt fork: flushGraphics is also a frame/tick
+                    // boundary (GameCanvas games deliver frames not through paint()):
+                    // "F n" into the trace and synchronous delivery of the tick's events
+                    // (headless --ticks). Under the surface lock — the same lock
+                    // order as in paint() (the surface, then TickInput)
+                    org.microemu.TickInput.boundary();
                     surface.getGraphics().drawImage(
                             ((J2SEMutableImage) gameCanvasImage).getImage(), 
                             x, y, x + width, y + height, 

@@ -1,28 +1,30 @@
 /*
- *  arlecchino-midp-rt: трассировка MIDP-вызовов игры (LGPL 2.1 — см. LICENSE
- *  и NOTICE в корне репозитория).
+ *  arlecchino-midp-rt: tracing of the game's MIDP calls (LGPL 2.1 — see LICENSE
+ *  and NOTICE at the repository root).
  *
- *  Зачем: чтобы перенести игру на другой (нативный) движок, нужно точно знать,
- *  какие методы MIDP она реально дёргает и с какими аргументами. Трасса,
- *  снятая под шимом, служит эталоном: последовательность вызовов рисования
- *  на кадр + гистограмма всей сессии.
+ *  Why: to move a game to another (native) engine you need to know exactly
+ *  which MIDP methods it really calls and with which arguments. A trace
+ *  taken under the shim serves as the reference: the sequence of drawing calls
+ *  per frame + a histogram of the whole session.
  *
- *  Включение: -Dmidprt.trace=<файл> (или =- на stdout). Выключено по
- *  умолчанию: единственная проверка статического финального флага ON, поэтому
- *  на обычных прогонах накладных расходов нет.
+ *  Enabling: -Dmidprt.trace=<file> (or =- for stdout). Off by
+ *  default: the only check is a static final flag ON, so
+ *  ordinary runs have no overhead.
  *
- *  Формат — построчный текст (легко diff'ать и грепать):
- *      F <номер кадра> t=<мс от старта трассы>   — граница кадра (paint)
- *      <метод> <арг> <арг> ...                   — вызов
- *      I <id> <w>x<h> <источник>                 — создание Image
- *      P <id> <тип> <N>b                         — создание Player (JSR-135)
- *      <метод> "<стор>" len=N hex=…              — запись RMS целиком
- *  В конце (shutdown hook) — блок "# histogram" с числом вызовов по методам.
+ *  The format is line-based text (easy to diff and grep):
+ *      F <frame number> t=<ms since trace start> — frame boundary (paint,
+ *                                                GameCanvas.flushGraphics);
+ *                                                in tick mode — without t=
+ *      <method> <arg> <arg> ...                  — a call
+ *      I <id> <w>x<h> <source>                   — Image creation
+ *      P <id> <type> <N>b                        — Player creation (JSR-135)
+ *      <method> "<store>" len=N hex=…            — a whole RMS record write
+ *  At the end (shutdown hook) — a "# histogram" block with call counts per method.
  *
- *  Ограничение объёма: подробности рисования пишутся только для первых
- *  -Dmidprt.trace.frames кадров (по умолчанию 200), дальше идёт один счётчик.
- *  Редкие и важные вещи — ввод, RMS, звук, смена Displayable, создание
- *  Image — пишутся ВСЕГДА (event/bytes), лимит на них не распространяется.
+ *  Volume limit: drawing details are written only for the first
+ *  -Dmidprt.trace.frames frames (200 by default), after that only a counter.
+ *  Rare and important things — input, RMS, sound, Displayable changes, Image
+ *  creation — are ALWAYS written (event/bytes), the limit does not apply to them.
  */
 package org.microemu.log;
 
@@ -37,13 +39,13 @@ import java.util.TreeMap;
 
 public final class MidpTrace {
 
-	/** Путь файла трассы или null. Читается один раз при загрузке класса. */
+	/** Path of the trace file or null. Read once when the class is loaded. */
 	private static final String TARGET = System.getProperty("midprt.trace");
 
-	/** Трасса включена. Финальный флаг — JIT выкидывает выключённые ветки. */
+	/** Tracing is on. A final flag — the JIT drops the disabled branches. */
 	public static final boolean ON = TARGET != null && TARGET.length() > 0;
 
-	/** Ограничение объёма: после N кадров пишем только гистограмму. */
+	/** Volume limit: after N frames only the histogram is written. */
 	private static final int MAX_FRAMES = Integer.getInteger("midprt.trace.frames",
 			200).intValue();
 
@@ -78,11 +80,11 @@ public final class MidpTrace {
 				out = new PrintWriter(new BufferedWriter(new FileWriter(TARGET)));
 			}
 		} catch (IOException e) {
-			Logger.warn("midprt.trace: не удалось открыть " + TARGET + ": " + e);
+			Logger.warn("midprt.trace: cannot open " + TARGET + ": " + e);
 			return;
 		}
 		t0 = System.currentTimeMillis();
-		out.println("# midp-rt trace, кадров с подробностями: " + MAX_FRAMES);
+		out.println("# midp-rt trace, frames with details: " + MAX_FRAMES);
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
 			public void run() {
 				finish();
@@ -90,7 +92,7 @@ public final class MidpTrace {
 		}, "midprt-trace-close"));
 	}
 
-	/** Граница кадра: вызывается перед Displayable.paint(). */
+	/** Frame boundary: called before Displayable.paint(). */
 	public static synchronized void frame() {
 		if (out == null) {
 			return;
@@ -98,18 +100,24 @@ public final class MidpTrace {
 		frame++;
 		detail = frame < MAX_FRAMES;
 		if (detail) {
-			out.println("F " + frame + " t=" + (System.currentTimeMillis() - t0));
+			// arlecchino-midp-rt fork: in tick mode (headless --ticks) the wall
+			// time is not written — the traces of two runs match byte for byte
+			if (org.microemu.TickInput.active()) {
+				out.println("F " + frame);
+			} else {
+				out.println("F " + frame + " t=" + (System.currentTimeMillis() - t0));
+			}
 		} else if (frame == MAX_FRAMES) {
-			out.println("# ... подробности отключены после кадра " + MAX_FRAMES
-					+ ", гистограмма продолжает считаться");
+			out.println("# ... details disabled after frame " + MAX_FRAMES
+					+ ", the histogram keeps counting");
 			out.flush();
 		}
 	}
 
-	// ------------------------------------------------------- события (всегда)
+	// ------------------------------------------------------- events (always)
 	//
-	// Ввод, RMS, звук, смена Displayable — редкие и важные: пишутся вне
-	// зависимости от лимита подробных кадров.
+	// Input, RMS, sound, Displayable changes are rare and important: they are written
+	// regardless of the detailed-frames limit.
 
 	public static synchronized void event(String m) {
 		hit(m);
@@ -146,7 +154,7 @@ public final class MidpTrace {
 		}
 	}
 
-	// ------------------------------------------- вызовы рисования (по кадрам)
+	// ------------------------------------------- drawing calls (per frame)
 
 	public static synchronized void call(String m) {
 		hit(m);
@@ -204,7 +212,7 @@ public final class MidpTrace {
 		}
 	}
 
-	/** Вызов с объектом-изображением первым аргументом (drawImage/drawRegion). */
+	/** A call with an image object as the first argument (drawImage/drawRegion). */
 	public static synchronized void callImage(String m, Object image, int[] args) {
 		hit(m);
 		if (detail && out != null) {
@@ -217,9 +225,9 @@ public final class MidpTrace {
 		}
 	}
 
-	/** Вызов с байтовой полезной нагрузкой (записи RMS): дамп в hex.
-	 *  Пишется ВСЕГДА, независимо от лимита подробных кадров — записей мало,
-	 *  а формат сейва нужен целиком. */
+	/** A call with a byte payload (RMS writes): a hex dump.
+	 *  ALWAYS written, regardless of the detailed-frames limit — there are few writes,
+	 *  and the save format is needed in full. */
 	public static synchronized void bytes(String m, String name, byte[] data,
 			int off, int len) {
 		hit(m);
@@ -243,8 +251,8 @@ public final class MidpTrace {
 
 	private static final char[] HEX = "0123456789abcdef".toCharArray();
 
-	/** Регистрация созданного Player: стабильный id + тип и размер носителя
-	 *  (по размеру опознаётся конкретный /mid/*.mid). */
+	/** Registration of a created Player: a stable id + the media type and size
+	 *  (the size identifies the specific /mid/*.mid). */
 	public static synchronized void player(Object pl, String type, int nbytes) {
 		hit("Manager.createPlayer");
 		int id = objId(pl);
@@ -253,7 +261,7 @@ public final class MidpTrace {
 		}
 	}
 
-	/** Событие плеера со ссылкой на его id: "Player.start #4". */
+	/** A player event referring to its id: "Player.start #4". */
 	public static synchronized void playerEvent(String m, Object pl) {
 		hit(m);
 		if (out != null) {
@@ -261,7 +269,7 @@ public final class MidpTrace {
 		}
 	}
 
-	/** Регистрация созданного Image: стабильный id + источник. */
+	/** Registration of a created Image: a stable id + the source. */
 	public static synchronized void image(Object image, String src, int w, int h) {
 		hit("Image.create");
 		int id = objId(image);
@@ -270,9 +278,9 @@ public final class MidpTrace {
 		}
 	}
 
-	// ---------------------------------------------------------------- служебное
+	// ---------------------------------------------------------------- internals
 
-	/** Стабильный порядковый номер объекта (изображения, плеера). */
+	/** A stable sequence number of an object (image, player). */
 	private static int objId(Object o) {
 		if (o == null) {
 			return 0;
@@ -319,7 +327,7 @@ public final class MidpTrace {
 		if (out == null) {
 			return;
 		}
-		out.println("# histogram (кадров всего: " + (frame + 1) + ")");
+		out.println("# histogram (frames total: " + (frame + 1) + ")");
 		for (Iterator it = counts.entrySet().iterator(); it.hasNext();) {
 			Map.Entry e = (Map.Entry) it.next();
 			out.println("# " + e.getKey() + " " + ((int[]) e.getValue())[0]);

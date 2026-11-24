@@ -299,7 +299,7 @@ const MIDLET_MANIFEST: &str = "Manifest-Version: 1.0\n\
 
 /// The full clean-room MIDP/CLDC stub: reuse the installed one when present, else
 /// build one INTO `work` (a test never writes to the user's home).
-fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
+pub fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
     if let Some(p) = arlecchino::midp_stub::stub_jar() {
         return Ok(p);
     }
@@ -315,11 +315,22 @@ fn full_midp_stub(work: &Path) -> Result<PathBuf, String> {
 /// one RecordStore write).  A different `color` is an intentionally different jar —
 /// the difftest FAIL fixture.
 pub fn build_synth_midlet(work: &Path, color: u32) -> Result<PathBuf, String> {
+    build_synth_midlet_impl(work, color, false)
+}
+
+/// The same MIDlet driven by a game-style loop thread (repaint + serviceRepaints per
+/// tick); every frame also records the paint index at which the last key press
+/// arrived (`fillRect <index> 0 1 1` in a midp-rt trace).
+pub fn build_synth_midlet_looping(work: &Path, color: u32) -> Result<PathBuf, String> {
+    build_synth_midlet_impl(work, color, true)
+}
+
+fn build_synth_midlet_impl(work: &Path, color: u32, looping: bool) -> Result<PathBuf, String> {
     if !have(&javac()) {
         return Err("javac not on PATH".into());
     }
     let stub = full_midp_stub(work)?;
-    let tag = format!("{:06x}", color & 0xFF_FFFF);
+    let tag = format!("{:06x}{}", color & 0xFF_FFFF, if looping { "_loop" } else { "" });
     let src_dir = work.join(format!("midlet_src_{tag}"));
     let cls_dir = work.join(format!("midlet_classes_{tag}"));
     std::fs::create_dir_all(&src_dir).map_err(|e| e.to_string())?;
@@ -328,7 +339,10 @@ pub fn build_synth_midlet(work: &Path, color: u32) -> Result<PathBuf, String> {
     let template = std::fs::read_to_string(fixtures_dir().join("synthjar").join("midlet").join("SynthMidlet.java"))
         .map_err(|e| e.to_string())?;
     let src = src_dir.join("SynthMidlet.java");
-    std::fs::write(&src, template.replace("@COLOR@", &format!("{:06X}", color & 0xFF_FFFF)))
+    let text = template
+        .replace("@COLOR@", &format!("{:06X}", color & 0xFF_FFFF))
+        .replace("@LOOP@", if looping { "true" } else { "false" });
+    std::fs::write(&src, text)
         .map_err(|e| e.to_string())?;
 
     run(
@@ -352,4 +366,101 @@ pub fn build_synth_midlet(work: &Path, color: u32) -> Result<PathBuf, String> {
     let jar = work.join(format!("synth_midlet_{tag}.jar"));
     pack_jar(&cls_dir, &jar, Some(MIDLET_MANIFEST));
     Ok(jar)
+}
+
+// ---- midp-rt from the checkout ---------------------------------------------
+
+fn midp_rt_src() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("midp-rt")
+}
+
+fn asm_jar() -> Option<PathBuf> {
+    let lib = midp_rt_src().join("lib");
+    let mut jars: Vec<PathBuf> = std::fs::read_dir(&lib)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            let n = p.file_name().unwrap().to_string_lossy();
+            n.starts_with("asm") && n.ends_with(".jar")
+        })
+        .collect();
+    jars.sort();
+    jars.pop()
+}
+
+/// Compile midp-rt from the checkout into `<work>/build/midp-rt-classes` (classes +
+/// resources, run straight off the directory), with the ASM jar copied to
+/// `<work>/lib/`, the checkout layout `midprun::runtime_classpath` recognises.
+fn build_midp_rt(work: &Path, asm: &Path) -> Result<PathBuf, String> {
+    let out = work.join("build").join("midp-rt-classes");
+    let lib = work.join("lib");
+    std::fs::create_dir_all(&lib).map_err(|e| e.to_string())?;
+    std::fs::copy(asm, lib.join(asm.file_name().unwrap())).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let modules = [
+        "microemu-cldc",
+        "microemu-midp",
+        "microemu-javase",
+        "microemu-javase-swing",
+        "microemu-extensions/microemu-nokiaui",
+        "microemu-extensions/microemu-siemensapi",
+    ];
+    let mut srcs = Vec::new();
+    for m in modules {
+        let base = midp_rt_src().join(m).join("src").join("main");
+        let mut v = arlecchino::util::rglob_ext(&base.join("java"), "java");
+        srcs.append(&mut v);
+        let res = base.join("resources");
+        if res.is_dir() {
+            for f in arlecchino::util::walk_files(&res) {
+                let dst = out.join(f.strip_prefix(&res).unwrap());
+                std::fs::create_dir_all(dst.parent().unwrap()).map_err(|e| e.to_string())?;
+                std::fs::copy(&f, &dst).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    srcs.sort();
+    let list = work.join("midp-rt-sources.txt");
+    std::fs::write(&list, srcs.iter().map(|p| s(p)).collect::<Vec<_>>().join("\n"))
+        .map_err(|e| e.to_string())?;
+    run(
+        &[
+            javac(),
+            "--release".into(),
+            "17".into(),
+            "-encoding".into(),
+            "UTF-8".into(),
+            "-nowarn".into(),
+            "-cp".into(),
+            s(asm),
+            "-d".into(),
+            s(&out),
+            format!("@{}", s(&list)),
+        ],
+        "javac (midp-rt)",
+    )?;
+    Ok(out)
+}
+
+/// midp-rt compiled from THIS checkout's `midp-rt/` sources (not the installed
+/// jar), once per test binary: the classes directory, usable wherever a
+/// `midp-rt.jar` path is expected (`midprun::runtime_classpath` finds the ASM jar).
+pub fn midp_rt_checkout_build() -> Result<PathBuf, String> {
+    static RT: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    RT.get_or_init(|| {
+        if !have(&javac()) || !have(&java()) {
+            return Err("javac/java not on PATH".into());
+        }
+        let asm = asm_jar().ok_or("midp-rt/lib/asm-*.jar missing")?;
+        build_midp_rt(&workdir("midp-rt-checkout"), &asm)
+    })
+    .clone()
+}
+
+/// The same build as a classpath (`<classes>:<asm jar>`).
+pub fn midp_rt_from_checkout() -> Result<String, String> {
+    let classes = midp_rt_checkout_build()?;
+    let cp = arlecchino::midprun::runtime_classpath(&classes);
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    Ok(cp.iter().map(|p| s(p)).collect::<Vec<_>>().join(sep))
 }
