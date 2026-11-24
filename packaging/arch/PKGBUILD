@@ -1,0 +1,53 @@
+# Maintainer: Alexander Berg (Wehrwolfmann) <256216494+wehrwolfmann@users.noreply.github.com>
+
+pkgname=arlecchino
+pkgver=2.0.0
+pkgrel=1
+pkgdesc='Meta-decompiler for Java and J2ME porting toolkit'
+arch=('x86_64')
+url='https://github.com/wehrwolfmann/arlecchino'
+license=('Apache-2.0')
+depends=(
+  'dbus'
+  'libgcc'
+  'glibc'
+  'java-environment>=11'
+  'libglvnd'
+  'libxkbcommon'
+  'wayland'
+)
+makedepends=('cargo')
+options=('!lto')
+optdepends=(
+  'git: build FreeJ2ME from source in arlecchino setup'
+  'libxcursor: GUI on X11'
+  'libxi: GUI on X11'
+  'libxrandr: GUI on X11'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('f1f1583873ef125510e6e04451274137b429adca623e30d36a3f9f8f51505b36')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo build --frozen --release --features gui,tray
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 -t "$pkgdir/usr/bin" target/release/{arlecchino,arlecchino-gui}
+  install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE NOTICE
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

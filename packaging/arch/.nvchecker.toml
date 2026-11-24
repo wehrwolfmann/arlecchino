@@ -1,0 +1,6 @@
+[arlecchino]
+source = "github"
+github = "wehrwolfmann/arlecchino"
+use_max_tag = true
+prefix = "v"
+exclude_regex = "python-.*"
