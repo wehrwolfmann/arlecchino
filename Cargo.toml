@@ -1,6 +1,6 @@
 [package]
 name = "arlecchino"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
 description = "Meta-decompiler and J2ME port toolkit: multi-decompiler best-of merge, auto-fix, round-trip, FreeJ2ME emulation."
 authors = ["Wehrwolfmann"]
