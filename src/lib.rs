@@ -14,7 +14,7 @@
 //!
 //! License: Apache-2.0.
 
-pub const VERSION: &str = "1.0.0";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod ai;
 pub mod ai_model;
