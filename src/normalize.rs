@@ -39,7 +39,7 @@ static LEAD_BLANK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\A\s*\n").unw
 fn clean_text(text: &str, strip_comments: bool) -> String {
     let mut t = PKG_DEFPACKAGE.replace_all(text, "").into_owned();
     t = IMPORT_DEFPACKAGE.replace_all(&t, "").into_owned();
-    t = QUALIFIED.replace_all(&t, "").into_owned();
+    t = strip_outside_literals(&t, &QUALIFIED);
     if strip_comments {
         t = JADX_INFO.replace_all(&t, "").into_owned();
         t = JADX_WARN.replace_all(&t, "").into_owned();
@@ -141,6 +141,40 @@ pub fn sporeflower_synthetic_names(tiny: &str) -> std::collections::BTreeMap<Str
     out
 }
 
+/// Remove every match of `re` from the Java source `text`, except inside string,
+/// text block and character literals: a decompiler only adds the synthetic
+/// package prefix to type references, so a literal that happens to contain it is
+/// program data and must stay as it is.
+fn strip_outside_literals(text: &str, re: &Regex) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let (mut i, mut code_start) = (0usize, 0usize);
+    while i < b.len() {
+        let end = match b[i] {
+            b'"' if text[i..].starts_with("\"\"\"") => text[i + 3..]
+                .find("\"\"\"")
+                .map_or(b.len(), |p| i + 3 + p + 3),
+            q @ (b'"' | b'\'') => {
+                let mut j = i + 1;
+                while j < b.len() && b[j] != q && b[j] != b'\n' {
+                    j += if b[j] == b'\\' { 2 } else { 1 };
+                }
+                (j + 1).min(b.len())
+            }
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        out.push_str(&re.replace_all(&text[code_start..i], ""));
+        out.push_str(&text[i..end]);
+        i = end;
+        code_start = end;
+    }
+    out.push_str(&re.replace_all(&text[code_start..], ""));
+    out
+}
+
 fn unwrap_package(srcdir: &Path, pkg: &str) -> usize {
     let wrap = srcdir.join(pkg);
     if !wrap.is_dir() {
@@ -168,7 +202,7 @@ fn unwrap_package(srcdir: &Path, pkg: &str) -> usize {
         };
         let mut t = pkg_re.replace_all(&text, "").into_owned();
         t = imp_re.replace_all(&t, "").into_owned();
-        t = qual_re.replace_all(&t, "").into_owned();
+        t = strip_outside_literals(&t, &qual_re);
         t = LEAD_BLANK.replace(&t, "").into_owned();
         if t != text {
             let _ = std::fs::write(&jf, t);
@@ -222,5 +256,28 @@ pub fn apply(engine_normalize: &str, srcdir: &Path, strip_comments: bool) -> usi
         "unjar" => normalize_unjar(srcdir),
         "sporeflower" => normalize_sporeflower(srcdir),
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn package_prefix_is_kept_inside_literals() {
+        let re = Regex::new(r"\bdefaultpkg\.").unwrap();
+        let src = "defaultpkg.Foo f = new defaultpkg.Foo(\"defaultpkg.Foo\");\n\
+                   char c = 'd'; String s = \"a\\\"defaultpkg.x\"; defaultpkg.Bar.run();\n\
+                   String t = \"\"\"\n  defaultpkg.Text\n  \"\"\"; defaultpkg.Baz z;\n";
+        let want = "Foo f = new Foo(\"defaultpkg.Foo\");\n\
+                    char c = 'd'; String s = \"a\\\"defaultpkg.x\"; Bar.run();\n\
+                    String t = \"\"\"\n  defaultpkg.Text\n  \"\"\"; Baz z;\n";
+        assert_eq!(strip_outside_literals(src, &re), want);
+    }
+
+    #[test]
+    fn jadx_cleanup_keeps_literals() {
+        let out = clean_text("defpackage.A a = defpackage.A.of(\"defpackage.A\");\n", false);
+        assert_eq!(out, "A a = A.of(\"defpackage.A\");\n");
     }
 }
