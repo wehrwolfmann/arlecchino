@@ -205,11 +205,14 @@ pub fn parse_javap(stdout: &str, rev: &BTreeMap<String, String>) -> BTreeMap<Str
         if st.is_empty() || st.starts_with("Compiled from") || st == "{" || st == "}" {
             continue;
         }
-        if st.ends_with(");") && !off.is_match(line) && !st.contains("Code:") {
+        // javap prints the static initializer as `static {};` — without this its
+        // references were credited to whichever method preceded it.
+        let is_clinit = st == "static {};";
+        if is_clinit || (st.ends_with(");") && !off.is_match(line) && !st.contains("Code:")) {
             if let Some(c) = cur.take() {
                 res.insert(c, std::mem::take(&mut refs));
             }
-            cur = Some(normsig(st, rev));
+            cur = Some(if is_clinit { "<clinit>".to_string() } else { normsig(st, rev) });
             refs = BTreeSet::new();
             continue;
         }
@@ -517,6 +520,21 @@ pub fn variant_drifts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn static_initializer_is_its_own_method() {
+        let rev = BTreeMap::new();
+        let javap = "class e {\n  private final boolean a(boolean);\n    Code:\n       0: getfield      #2                  // Field dh:Z\n\n  static {};\n    Code:\n       0: iconst_0\n       1: putstatic     #3                  // Field D:Z\n}\n";
+        let m = parse_javap(javap, &rev);
+        let a = m
+            .iter()
+            .find(|(k, _)| k.contains("a(boolean)"))
+            .map(|(_, v)| v)
+            .unwrap_or_else(|| panic!("no a(boolean) in {:?}", m.keys().collect::<Vec<_>>()));
+        assert!(a.contains(&("Field".into(), "dh".into(), "Z".into())));
+        assert!(!a.contains(&("Field".into(), "D".into(), "Z".into())));
+        assert!(m["<clinit>"].contains(&("Field".into(), "D".into(), "Z".into())));
+    }
 
     #[test]
     fn canon_ref_drops_owner_keeps_kind() {
