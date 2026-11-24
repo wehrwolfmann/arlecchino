@@ -255,9 +255,9 @@ fn cmd_decompile(a: &DecompileArgs) -> i32 {
     // resolve classpath (auto MIDP stub)
     let mut classpath: Option<String> = a.classpath.clone();
     if classpath.is_none() && !a.no_midp_stub {
-        if let Some(fj) = find_freej2me(a.midp_stub.as_deref(), Some(&root)) {
-            println!("   MIDP stub (auto): {}", fj.display());
-            classpath = Some(fj.to_string_lossy().into_owned());
+        if let Some(cp) = crate::emulate::auto_api_classpath(a.midp_stub.as_deref(), &root) {
+            println!("   MIDP stub (auto): {cp}");
+            classpath = Some(cp);
         } else {
             println!(
                 "   MIDP stub: none found (run `arlecchino setup`, or pass -cp / \

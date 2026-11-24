@@ -1268,8 +1268,7 @@ pub fn cmd_ai_fix(a: &AiFixArgs) -> i32 {
     };
     let mut classpath = a.classpath.clone();
     if classpath.is_none() && !a.no_midp_stub {
-        classpath = crate::emulate::find_freej2me(a.midp_stub.as_deref(), Some(&root))
-            .map(|p| p.to_string_lossy().into_owned());
+        classpath = crate::emulate::auto_api_classpath(a.midp_stub.as_deref(), &root);
     }
     let engine_dirs: Vec<(String, PathBuf)> = engines
         .iter()
