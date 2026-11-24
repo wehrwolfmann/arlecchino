@@ -634,8 +634,11 @@ reference game. See
 
 ```sh
 cargo build --release
-regress/run.sh                 # or: regress/run.sh /path/to/corpus
+ARLECCHINO_CORPUS=/path/to/corpus regress/run.sh   # or: regress/run.sh /path/to/corpus
 ```
+
+The corpus folder comes from the argument or, without one, from `ARLECCHINO_CORPUS`;
+with neither the script stops with a hint.
 
 Both numbers of the `RESULT merged:` line are compared (the run uses `--no-metrics`,
 which is not part of the gate), and a mismatch is a non-zero exit. The measurement uses

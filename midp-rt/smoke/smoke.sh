@@ -6,8 +6,8 @@
 # Phase 1: a test MIDlet built with javac --release 8 (class file major 52 —
 #          modern bytecode, on which ASM 3.1 used to fail).
 # Phase 2 (optional): an original phone jar (old bytecode, major 45-49),
-#          the path comes from $SMOKE_PHONE_JAR or the default; if the file is missing
-#          the phase is skipped with a warning.
+#          the path comes from $ARLECCHINO_SMOKE_JAR; if it is unset or the file is
+#          missing, the phase is skipped with a message.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -15,7 +15,7 @@ RT=../build/midp-rt.jar
 ASM=../lib/asm-9.8.jar
 [ -f "$RT" ] || { echo "Run ../build.sh first"; exit 1; }
 
-PHONE_JAR="${SMOKE_PHONE_JAR:-$HOME/Загрузки/allods_rage_of_mages_mobportalnet_176x220_ru.jar}"
+PHONE_JAR="${ARLECCHINO_SMOKE_JAR:-}"
 
 rm -rf out && mkdir -p out/classes
 
@@ -49,11 +49,14 @@ run_pair() {
 run_pair modern "$(pwd)/out/test.jar"
 
 # 4. Phase 2: an original phone jar (old bytecode), instrumentation ON
-if [ -f "$PHONE_JAR" ]; then
+if [ -z "$PHONE_JAR" ]; then
+    echo "SMOKE SKIP [phone]: no phone jar given;"
+    echo "  set the path with ARLECCHINO_SMOKE_JAR=<game.jar>"
+elif [ -f "$PHONE_JAR" ]; then
     run_pair phone "$PHONE_JAR"
 else
     echo "SMOKE SKIP [phone]: phone jar not found ($PHONE_JAR);"
-    echo "  set the path with SMOKE_PHONE_JAR=<game.jar>"
+    echo "  set the path with ARLECCHINO_SMOKE_JAR=<game.jar>"
 fi
 
 # 5. Phase 3: headless frame capture (--frames-dir + index.json + --inputs):

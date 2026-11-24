@@ -5,7 +5,7 @@
 # line of `arlecchino decompile`.  Run `regress/run.sh` to re-measure and compare.
 #
 # HOW THESE WERE MEASURED (2026-09-01)
-#   corpus     ~/Загрузки/J2ME — 11 jars, 10 of them listed below (see the
+#   corpus     a local J2ME folder ($ARLECCHINO_CORPUS) — 11 jars, 10 of them listed below (see the
 #              note on the private overlay further down)
 #   config     regress/engines.6.toml (six engines; jode and fernflower excluded —
 #              see the header of that file)

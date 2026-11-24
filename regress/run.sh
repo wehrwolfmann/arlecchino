@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Reproduce the numbers in regress/expected.txt.
 #
-#   regress/run.sh [CORPUS_DIR]        # default: ~/Загрузки/J2ME
+#   regress/run.sh [CORPUS_DIR]        # default: $ARLECCHINO_CORPUS
 #
 # Builds nothing: point ARLECCHINO at a binary, or let the script use
 # target/release/arlecchino.  Every jar is decompiled with regress/engines.6.toml
@@ -13,7 +13,7 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(dirname "$HERE")"
-CORPUS="${1:-$HOME/Загрузки/J2ME}"
+CORPUS="${1:-${ARLECCHINO_CORPUS:-}}"
 BIN="${ARLECCHINO:-$REPO/target/release/arlecchino}"
 CFG="$HERE/engines.6.toml"
 EXP="$HERE/expected.txt"
@@ -25,7 +25,8 @@ WORK="$(mktemp -d "${TMPDIR:-/var/tmp}/arlecchino-regress.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 [ -x "$BIN" ] || { echo "no binary at $BIN (cargo build --release, or set ARLECCHINO)"; exit 2; }
-[ -d "$CORPUS" ] || { echo "no corpus dir: $CORPUS"; exit 2; }
+[ -n "$CORPUS" ] || { echo "no corpus dir given: pass a folder or set ARLECCHINO_CORPUS"; exit 2; }
+[ -d "$CORPUS" ] || { echo "no corpus dir: $CORPUS (pass a folder or set ARLECCHINO_CORPUS)"; exit 2; }
 
 fail=0; seen=0
 printf '%-38s %14s %14s\n' jar expected got

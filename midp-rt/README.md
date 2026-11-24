@@ -141,11 +141,14 @@ frames — the upgrade was not tested with it.
 ```sh
 ./smoke/smoke.sh   # instrumentation ON; three phases:
                    #  1) a test MIDlet, major 52 (modern bytecode),
-                   #  2) an original phone jar (SMOKE_PHONE_JAR, optional),
+                   #  2) an original phone jar (ARLECCHINO_SMOKE_JAR, optional),
                    #  3) headless capture: 12 PNG + index.json, NUM5 input gives
                    #     a new screen state (>=2 unique sha256);
                    # phases 1–2: two headless runs, a frame dump, sha256 comparison
 ```
+
+Phase 2 runs only when `ARLECCHINO_SMOKE_JAR=<game.jar>` points at an original phone
+jar; otherwise it is skipped with a message.
 
 Sound (JSR-135) is checked by a separate live smoke test — you hear it from the speakers:
 
