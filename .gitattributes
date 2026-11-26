@@ -1,0 +1,3 @@
+# Third-party code and test inputs: kept out of GitHub language stats.
+midp-rt/** linguist-vendored
+tests/fixtures/** linguist-vendored
