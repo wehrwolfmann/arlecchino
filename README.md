@@ -1,3 +1,7 @@
+English | [Русский](README.ru.md) | [Deutsch](README.de.md)
+
+[![Release](https://img.shields.io/github/v/release/wehrwolfmann/arlecchino)](https://github.com/wehrwolfmann/arlecchino/releases/latest) [![License](https://img.shields.io/github/license/wehrwolfmann/arlecchino)](LICENSE)
+
 # Arlecchino — meta-decompiler & J2ME port toolkit
 
 A **meta-decompiler** for Java plus a small **J2ME / MIDP porting toolkit**, written
@@ -7,6 +11,19 @@ source tree — for every class (optionally every method) it keeps the variant w
 fewest compilation errors. It then **auto-fixes** common decompiler artifacts,
 **round-trips** the result back to bytecode to measure coverage, can **deobfuscate**
 for readability, and can **emulate** the original jar in a bundled J2ME runtime.
+
+![arlecchino-gui decompiling a jar: several engines, best-of merge, auto-fix and round-trip in one run](.github/screenshots/decompile.gif)
+
+<details>
+<summary>▶ Screenshots</summary>
+
+![The Decompile tab with a jar selected](.github/screenshots/main-window.png)
+
+![A run in progress: every engine's output streams into the log](.github/screenshots/decompile-log.png)
+
+![The finished run with its metrics](.github/screenshots/result.png)
+
+</details>
 
 Its headline trick for **ProGuard-obfuscated** jars is a **bytecode-first canonical
 member renamer** (ASM): before decompiling, it rewrites the jar so every field and
@@ -44,7 +61,7 @@ needed. The only runtime requirement is a **JDK 11+** on `PATH`
 Needs a Rust toolchain (edition 2021) and, at runtime, a JDK 11+ on `PATH`.
 
 ```bash
-git clone … && cd arlecchino
+git clone https://github.com/wehrwolfmann/arlecchino.git && cd arlecchino
 cargo build --release                       # -> target/release/arlecchino  (CLI)
 cargo build --release --features gui,tray   # -> target/release/arlecchino-gui  (GUI + tray)
 ```
