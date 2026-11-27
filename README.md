@@ -71,7 +71,7 @@ cargo build --release --features gui,tray   # -> target/release/arlecchino-gui  
 ```
 arlecchino setup     [--engines-root DIR] [--only vineflower,cfr,…]
                      [--freej2me-prebuilt P | --freej2me-src DIR] [--no-freej2me]
-arlecchino decompile <jar> [-o OUT] [-cp DEPS] [--config C] [-j N]
+arlecchino decompile <jar> [-o OUT] [--classpath DEPS] [--config C] [-j N]
                      [--midp-stub JAR | --no-midp-stub]
                      [--rename-members | --no-rename-members] [--flatten-packages]
                      [--per-method] [--deobf] [--no-autofix] [--no-roundtrip]
@@ -508,7 +508,7 @@ metric. It also auto-adds a **MIDP stub** to the classpath so
 signatures follow the spec), then FreeJ2ME's jar (vendor APIs, and everything midp-rt
 lacks). FreeJ2ME alone drops some checked exceptions — e.g. `Player.stop()` without
 `throws MediaException` — which turns a faithful `catch` into a compile error. Override
-with `-cp`, `--midp-stub` (used alone), or `--no-midp-stub`.
+with `--classpath` (the `-cp` alias is also accepted), `--midp-stub` (used alone), or `--no-midp-stub`.
 
 A naive whole-tree compile of a badly obfuscated jar can therefore report a deceptively
 tiny number. An early prototype of this tool reported "1 error" on the reference game —
