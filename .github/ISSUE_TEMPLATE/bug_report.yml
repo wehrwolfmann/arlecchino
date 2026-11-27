@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in Arlecchino doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please don't attach jars you have no right to share;
+        a small jar that shows the problem, or the class list and error, is enough.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or GUI action
+      placeholder: arlecchino decompile app.jar -o out --per-method
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Arlecchino version
+      description: Output of `arlecchino --version`, or the commit you built from.
+      placeholder: arlecchino 2.0.0
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System and JDK
+      placeholder: Arch Linux, OpenJDK 21
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log and report
+      description: |
+        The console output, and `report.md` from the output directory if there is one.
+        Please remove anything you don't want to share.
+      render: text
