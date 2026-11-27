@@ -42,13 +42,23 @@
 # type, members named after Java keywords), same corpus and config, isolated engines
 # root: six jars dropped (Allods, cyber_blood, Elven, Get Rich, liquidator, Silent
 # Storm), none rose.
+#
+# RE-MEASURED 2026-11-24 on branch fix/silent-storm: the automatic API classpath is
+# now midp-rt.jar FIRST, then freej2me.jar (src/emulate.rs auto_api_classpath).
+# FreeJ2ME drops checked exceptions the spec declares (Player.stop/start/realize/
+# prefetch without `throws MediaException`, RecordStore and Connector likewise), so a
+# faithful `catch (MediaException e)` was an error "exception ... is never thrown" in
+# every engine.  midp-rt has the JSR-118/135 signatures.  Six jars dropped (Elven,
+# Flitzer, Get Rich, Liftboy, liquidator, Silent Storm), none rose.  The gate now
+# assumes midp-rt.jar is installed in the engines root (`arlecchino setup --only
+# midp-rt`); without it the old FreeJ2ME-only numbers apply.
 Allods_1_2_240x320 1 1
 Bruce_Lee_-_Iron_Fist_2D 1 1
 cyber_blood_rus 5 5
-Elven_Chronicles_v1_0_5ru_240x320 7 6
-Flitzer_w900_rus 16 16
-Get_Rich_or_Die_Tryin_ru_240x320 4 4
+Elven_Chronicles_v1_0_5ru_240x320 2 1
+Flitzer_w900_rus 13 13
+Get_Rich_or_Die_Tryin_ru_240x320 0 0
 GOTHIC-3 7 7
-Liftboy_240x320_rus 6 4
-liquidator_rus 2 2
-Silent_Storm_240x320 13 12
+Liftboy_240x320_rus 3 1
+liquidator_rus 0 0
+Silent_Storm_240x320 12 12

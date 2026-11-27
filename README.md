@@ -486,9 +486,12 @@ merge logs, file paths, flag names) is left stable and untranslated.
 attribution of the *other* files, **masking** their real errors. This tool instead
 **compiles each class in isolation** against the original jar (which supplies the
 canonical API of every sibling) and sums the per-class errors — an honest, unmaskable
-metric. It also auto-adds a **MIDP stub** (FreeJ2ME's jar) to the classpath so
-`javax.microedition.*` resolves; override with `-cp`, `--midp-stub`, or
-`--no-midp-stub`.
+metric. It also auto-adds a **MIDP stub** to the classpath so
+`javax.microedition.*` resolves: `midp-rt.jar` first when it is installed (its
+signatures follow the spec), then FreeJ2ME's jar (vendor APIs, and everything midp-rt
+lacks). FreeJ2ME alone drops some checked exceptions — e.g. `Player.stop()` without
+`throws MediaException` — which turns a faithful `catch` into a compile error. Override
+with `-cp`, `--midp-stub` (used alone), or `--no-midp-stub`.
 
 A naive whole-tree compile of a badly obfuscated jar can therefore report a deceptively
 tiny number. An early prototype of this tool reported "1 error" on the reference game —

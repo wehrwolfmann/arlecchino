@@ -27,6 +27,35 @@ pub fn find_freej2me(explicit: Option<&str>, root: Option<&Path>) -> Option<Path
     .find(|cand| cand.exists())
 }
 
+/// The automatic API classpath `javac` compiles decompiled sources against.
+///
+/// FreeJ2ME is the base: it carries the widest set of vendor APIs (Nokia, Siemens,
+/// Samsung, ...).  But it is an emulator, not a reference ABI, and some of its
+/// standard types drop checked exceptions the specification declares — e.g. its
+/// `javax.microedition.media.Player.stop()` has no `throws MediaException`, so a
+/// faithful `try { p.stop(); } catch (MediaException e)` fails with "exception
+/// MediaException is never thrown" (Silent Storm, every engine).  When midp-rt (our
+/// MicroEmulator fork, spec-faithful signatures) is installed, it goes FIRST, so the
+/// standard `javax.microedition.*` types resolve from it and everything it lacks still
+/// comes from FreeJ2ME.  An explicit `--midp-stub` is used alone, as given.
+pub fn auto_api_classpath(explicit: Option<&str>, root: &Path) -> Option<String> {
+    let fj = find_freej2me(explicit, Some(root));
+    if explicit.is_some() && fj.is_some() {
+        return fj.map(|p| p.to_string_lossy().into_owned());
+    }
+    let rt = crate::midprun::find_midp_rt(None, Some(root));
+    let parts: Vec<String> = [rt, fj]
+        .into_iter()
+        .flatten()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(":"))
+    }
+}
+
 /// Find the jar of the FreeJ2ME-plus LIBRETRO frontend (`freej2me-lr.jar`) — the very
 /// stdin/stdout-channel frontend `diffrun` uses to capture frames headless
 /// (block A). Installed next to freej2me.jar by `arlecchino setup`.
@@ -71,4 +100,27 @@ pub fn emulate(
     }
     println!("  launching: {}", argv.join(" "));
     util::run_inherit(&argv)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_api_classpath_puts_midp_rt_before_freej2me() {
+        if std::env::var("ARLECCHINO_MIDP_RT").map(|v| !v.is_empty()).unwrap_or(false) {
+            return; // an explicit override would win over the engines root
+        }
+        let root = crate::util::make_temp_dir("arl_apicp_").unwrap();
+        let fj = root.join("freej2me.jar");
+        let rt = root.join("midp-rt.jar");
+        std::fs::write(&fj, b"x").unwrap();
+        std::fs::write(&rt, b"x").unwrap();
+        let cp = auto_api_classpath(None, &root).unwrap();
+        assert_eq!(cp, format!("{}:{}", rt.display(), fj.display()));
+        // an explicit --midp-stub is used alone
+        let only = auto_api_classpath(Some(fj.to_str().unwrap()), &root).unwrap();
+        assert_eq!(only, fj.display().to_string());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
