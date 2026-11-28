@@ -234,6 +234,7 @@ const EN_PAIRS: &[(&str, &str)] = &[
     // GUI — decompile controls
     ("input_jar", "Input .jar:"),
     ("output_dir", "Output dir:"),
+    ("classpath", "Classpath:"),
     ("browse", "Browse…"),
     ("opt_deobf", "Deobfuscate (readability pass)"),
     ("opt_per_method", "Per-method merge (experimental)"),
@@ -302,6 +303,7 @@ const RU_PAIRS: &[(&str, &str)] = &[
     // GUI — decompile controls
     ("input_jar", "Входной .jar:"),
     ("output_dir", "Каталог вывода:"),
+    ("classpath", "Classpath:"),
     ("browse", "Обзор…"),
     ("opt_deobf", "Деобфускация (для читаемости)"),
     ("opt_per_method", "Слияние по методам (экспериментально)"),
@@ -370,6 +372,7 @@ const DE_PAIRS: &[(&str, &str)] = &[
     // GUI — decompile controls
     ("input_jar", "Eingabe-JAR:"),
     ("output_dir", "Ausgabeordner:"),
+    ("classpath", "Classpath:"),
     ("browse", "Durchsuchen…"),
     ("opt_deobf", "Deobfuskieren (bessere Lesbarkeit)"),
     ("opt_per_method", "Zusammenführen pro Methode (experimentell)"),
