@@ -26,6 +26,7 @@ pub struct ArlApp {
     // decompile
     jar: String,
     out: String,
+    classpath: String,
     deobf: bool,
     per_method: bool,
     no_autofix: bool,
@@ -57,6 +58,7 @@ impl ArlApp {
             tab: Tab::Decompile,
             jar: String::new(),
             out: "arlecchino_out".into(),
+            classpath: String::new(),
             deobf: false,
             per_method: false,
             no_autofix: false,
@@ -321,6 +323,7 @@ impl ArlApp {
         match f {
             FieldSel::Jar => &mut self.jar,
             FieldSel::Out => &mut self.out,
+            FieldSel::Classpath => &mut self.classpath,
             FieldSel::Norm => &mut self.norm_dir,
             FieldSel::EmuJar => &mut self.emu_jar,
         }
@@ -331,6 +334,7 @@ impl ArlApp {
         ui.add_space(6.0);
         self.path_row(ui, t("input_jar"), true, FieldSel::Jar);
         self.path_row(ui, t("output_dir"), false, FieldSel::Out);
+        self.path_row(ui, t("classpath"), true, FieldSel::Classpath);
         ui.add_space(4.0);
         ui.checkbox(&mut self.deobf, t("opt_deobf"));
         ui.checkbox(&mut self.per_method, t("opt_per_method"));
@@ -345,6 +349,10 @@ impl ArlApp {
                 .clicked()
             {
                 let mut args = vec!["decompile".to_string(), self.jar.clone(), "-o".into(), self.out.clone()];
+                if !self.classpath.trim().is_empty() {
+                    args.push("--classpath".into());
+                    args.push(self.classpath.clone());
+                }
                 if self.deobf {
                     args.push("--deobf".into());
                 }
@@ -486,6 +494,7 @@ fn pref_label(p: LangPref) -> &'static str {
 enum FieldSel {
     Jar,
     Out,
+    Classpath,
     Norm,
     EmuJar,
 }
